@@ -1,0 +1,19 @@
+.audio-banner {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  background: linear-gradient(135deg, var(--primary), var(--primary-container));
+  color: var(--on-primary);
+  text-align: center;
+  padding: 14px;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: 0 0 16px 16px;
+  animation: pulse-ring 2s infinite;
+  margin: -20px -20px 16px -20px;
+  font-family: var(--font-display);
+  letter-spacing: 0.5px;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
