@@ -254,18 +254,18 @@ function OwnerDashboardContent({
         <button
           onClick={() => setView(view === 'settings' ? 'tasks' : 'settings')}
           style={{
-            background: 'var(--surface-high)',
+            background: 'var(--primary)',
             border: 'none',
             borderRadius: '50%',
-            width: '40px',
-            height: '40px',
+            width: '48px',
+            height: '48px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: view === 'settings' ? 'var(--primary)' : 'var(--on-surface-variant)'
+            color: 'white'
           }}
         >
-          <Settings size={20} />
+          <Settings size={24} />
         </button>
       </header>
 
