@@ -246,27 +246,31 @@ function OwnerDashboardContent({
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }} style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '20px' }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', position: 'relative' }}>
         <div>
           <h2 style={{ color: 'var(--primary)', margin: 0, fontSize: '1.4rem' }}>{t('appName')}</h2>
           <span style={{ color: 'var(--on-surface-variant)', fontSize: '0.9rem' }}>{t('adminDashboard')}</span>
         </div>
+        <div style={{ position: 'absolute', right: 0, top: 0 }}>
         <button
           onClick={() => setView(view === 'settings' ? 'tasks' : 'settings')}
           style={{
-            background: 'var(--primary)',
+            background: '#028a3f',
             border: 'none',
             borderRadius: '50%',
-            width: '48px',
-            height: '48px',
+            width: '50px',
+            height: '50px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: 'white'
+            color: 'white',
+            cursor: 'pointer'
           }}
+          title={t('settings')}
         >
-          <Settings size={24} />
+          ⚙️
         </button>
+        </div>
       </header>
 
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
