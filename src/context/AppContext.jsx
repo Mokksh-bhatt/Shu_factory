@@ -257,40 +257,24 @@ export const AppProvider = ({ children }) => {
     } catch {}
   }, []);
 
-  // Request notification permission + pre-create alarm channel on startup
+  // Request notification permission on startup via raw bridge
   useEffect(() => {
-    (async () => {
-      try {
-        const { Capacitor } = await import('@capacitor/core');
-        if (!Capacitor.isNativePlatform()) return;
-        const { LocalNotifications } = await import('@capacitor/local-notifications');
-        const perm = await LocalNotifications.requestPermissions();
-        console.log('[LocalNotif] permission:', perm.display);
-        await LocalNotifications.createChannel({
-          id: 'shu_alarm_channel', name: 'Factory Alerts',
-          importance: 5, visibility: 1, vibration: true, lights: true, lightColor: '#FF0000',
-        });
-        console.log('[LocalNotif] alarm channel ready');
-      } catch (err) {
-        console.warn('[LocalNotif] init error:', err);
-      }
-    })();
+    const LN = window.Capacitor?.Plugins?.LocalNotifications;
+    if (!LN) return;
+    LN.requestPermissions().catch(() => {});
+    LN.createChannel({ id: 'shu_alarm_channel', name: 'Factory Alerts', importance: 5, visibility: 1, vibration: true, lights: true, lightColor: '#FF0000' }).catch(() => {});
   }, []);
 
-  // Fire a loud native notification via the alarm channel (works on Android APK even in background)
+  // Fire a loud native notification via the alarm channel
   const fireNativeAlarm = useCallback(async (title, body) => {
     try {
-      const { Capacitor } = await import('@capacitor/core');
-      if (!Capacitor.isNativePlatform()) return;
-      const { LocalNotifications } = await import('@capacitor/local-notifications');
+      const LN = window.Capacitor?.Plugins?.LocalNotifications;
+      if (!LN) return;
       const id = Math.floor(Math.random() * 2_000_000_000) + 1;
-      await LocalNotifications.schedule({
-        notifications: [{ id, title, body, channelId: 'shu_alarm_channel', smallIcon: 'ic_launcher', iconColor: '#028a3f' }],
-      });
-      console.log('[LocalNotif] fired id', id, title);
+      await LN.schedule({ notifications: [{ id, title, body, channelId: 'shu_alarm_channel', smallIcon: 'ic_launcher', iconColor: '#028a3f' }] });
       if ('vibrate' in navigator) navigator.vibrate([600, 200, 600, 200, 600, 200, 1000, 400, 600]);
     } catch (err) {
-      console.warn('[LocalNotif] schedule failed:', err);
+      console.warn('[LocalNotif] failed:', err);
     }
   }, []);
 

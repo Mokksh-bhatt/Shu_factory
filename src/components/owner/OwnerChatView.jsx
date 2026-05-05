@@ -86,6 +86,9 @@ export default function OwnerChatView({ partner, onBack, dateFilter, setDateFilt
                   {msg.sender} - {formatTime(msg.createdAt, language)}
                 </div>
                 {msg.text && <TranslatedText text={msg.text} targetLang={language} />}
+                {msg.imageUrl && (
+                  <img src={msg.imageUrl} alt="Message Attachment" style={{ width: '100%', maxWidth: '300px', height: 'auto', marginTop: '6px', borderRadius: '8px' }} />
+                )}
                 {msg.audioUrl && (
                   <audio controls src={msg.audioUrl} style={{ width: '100%', height: '32px', marginTop: '6px', borderRadius: '8px' }} />
                 )}
@@ -95,7 +98,18 @@ export default function OwnerChatView({ partner, onBack, dateFilter, setDateFilt
         ))}
       </div>
 
-      <VoiceInput onSubmit={handleSendMessage} onAudioSubmit={handleSendVoice} placeholder={t('messageWithName', { name: partner })} />
+      <VoiceInput 
+        onSubmit={handleSendMessage} 
+        onAudioSubmit={handleSendVoice} 
+        onImageSubmit={async (imageUrl) => {
+          try {
+            await sendMessage('owner', partner, '', imageUrl);
+          } catch (err) {
+            showToast(err.message || t('somethingWentWrong'), 'error');
+          }
+        }}
+        placeholder={t('messageWithName', { name: partner })} 
+      />
     </motion.div>
   );
 }

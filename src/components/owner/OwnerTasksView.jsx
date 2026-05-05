@@ -57,6 +57,20 @@ export default function OwnerTasksView({ workers, tasks, addTask, deleteTask, la
     }
   };
 
+  const handleAssignImage = async (imageUrl) => {
+    if (!targetWorker) {
+      showToast(t('selectWorkerFirst'), 'warning');
+      return;
+    }
+    try {
+      await addTask('', targetWorker, markImportant, null, imageUrl);
+      if (markImportant) setMarkImportant(false);
+      showToast(`🖼️ Image task sent to ${targetWorker}`, 'success');
+    } catch (err) {
+      showToast(err.message || t('somethingWentWrong'), 'error');
+    }
+  };
+
   const getTaskAge = (task) => {
     const ts = task.createdAt?.toMillis ? task.createdAt.toMillis() : (task.createdAt?.seconds ? task.createdAt.seconds * 1000 : 0);
     if (!ts) return 0;
@@ -112,6 +126,7 @@ export default function OwnerTasksView({ workers, tasks, addTask, deleteTask, la
         <VoiceInput
           onSubmit={handleAssignTask}
           onAudioSubmit={handleAssignVoice}
+          onImageSubmit={handleAssignImage}
           placeholder={targetWorker ? `${t('taskFor')} ${targetWorker}...` : t('selectWorkerFirst')}
         />
       </section>
@@ -126,6 +141,7 @@ export default function OwnerTasksView({ workers, tasks, addTask, deleteTask, la
         <select value={taskStatusFilter} onChange={(e) => setTaskStatusFilter(e.target.value)} style={{ flex: 1, minWidth: '100px', padding: '8px 12px' }}>
           <option value="all">{t('statusAll')}</option>
           <option value="PENDING">{t('pending')}</option>
+          <option value="PROCESSED">{t('processed') || 'Processed'}</option>
           <option value="DONE">{t('done')}</option>
         </select>
         <select value={taskDateFilter} onChange={(e) => setTaskDateFilter(e.target.value)} style={{ flex: 1, minWidth: '100px', padding: '8px 12px' }}>
@@ -157,7 +173,7 @@ export default function OwnerTasksView({ workers, tasks, addTask, deleteTask, la
                 borderRadius: '12px', 
                 padding: '14px', 
                 marginBottom: '10px',
-                borderLeft: `4px solid ${task.status === 'DONE' ? 'var(--success)' : task.important ? 'var(--error)' : 'var(--warning)'}`,
+                borderLeft: `4px solid ${task.status === 'DONE' ? 'var(--success)' : task.status === 'PROCESSED' ? 'var(--secondary)' : task.important ? 'var(--error)' : 'var(--warning)'}`,
                 ...(overdue && task.status === 'PENDING' ? { boxShadow: '0 0 0 1px rgba(239,68,68,0.3)' } : {})
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -190,6 +206,9 @@ export default function OwnerTasksView({ workers, tasks, addTask, deleteTask, la
                     <p style={{ fontSize: '1rem', margin: '4px 0 0', lineHeight: '1.4' }}>
                       {task.description && <TranslatedText text={task.description} targetLang={language} />}
                     </p>
+                    {task.imageUrl && (
+                      <img src={task.imageUrl} alt="Attachment" style={{ width: '100%', maxWidth: '300px', height: 'auto', marginTop: '8px', borderRadius: '8px' }} />
+                    )}
                     {task.audioUrl && (
                       <audio controls src={task.audioUrl} style={{ width: '100%', height: '36px', marginTop: '8px', borderRadius: '8px' }} />
                     )}
@@ -200,11 +219,32 @@ export default function OwnerTasksView({ workers, tasks, addTask, deleteTask, la
                       borderRadius: '12px', 
                       fontSize: '0.7rem', 
                       fontWeight: 'bold',
-                      background: task.status === 'DONE' ? 'var(--success)' : 'var(--warning)',
-                      color: '#000',
+                      background: task.status === 'DONE' ? 'var(--success)' : task.status === 'PROCESSED' ? 'var(--secondary)' : 'var(--warning)',
+                      color: task.status === 'PROCESSED' ? 'white' : '#000',
                     }}>
-                      {task.status === 'DONE' ? t('done') : t('pending')}
+                      {task.status === 'DONE' ? t('done') : task.status === 'PROCESSED' ? (t('processed') || 'Processed') : t('pending')}
                     </span>
+                    {task.status === 'PROCESSED' && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const { doc, updateDoc } = await import('firebase/firestore');
+                            const { db } = await import('../../firebase');
+                            await updateDoc(doc(db, 'tasks', task.id), { status: 'DONE' });
+                            showToast('Task approved and completed', 'success');
+                          } catch (err) {
+                            showToast(err.message, 'error');
+                          }
+                        }}
+                        style={{
+                          background: 'var(--success)', color: 'white', border: 'none',
+                          padding: '6px 12px', borderRadius: '16px', fontSize: '0.75rem',
+                          fontWeight: 'bold', cursor: 'pointer', marginTop: '6px'
+                        }}
+                      >
+                        Approve
+                      </button>
+                    )}
                     {task.status === 'PENDING' && (
                       <button
                         onClick={() => toggleTaskImportant(task.id, task.important)}
@@ -236,6 +276,9 @@ export default function OwnerTasksView({ workers, tasks, addTask, deleteTask, la
                           💬 {reply.from} • {new Date(reply.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         <div><TranslatedText text={reply.text} targetLang={language} /></div>
+                        {reply.imageUrl && (
+                          <img src={reply.imageUrl} alt="Reply Attachment" style={{ width: '100%', maxWidth: '200px', height: 'auto', marginTop: '4px', borderRadius: '6px' }} />
+                        )}
                         {reply.audioUrl && (
                           <audio controls src={reply.audioUrl} style={{ width: '100%', height: '28px', marginTop: '4px', borderRadius: '6px' }} />
                         )}
@@ -244,9 +287,9 @@ export default function OwnerTasksView({ workers, tasks, addTask, deleteTask, la
                   </div>
                 )}
 
-                {task.response && (
-                  <div style={{ marginTop: '8px', padding: '8px 10px', borderRadius: '8px', background: task.status === 'DONE' ? 'rgba(34,197,94,0.1)' : 'var(--surface-high)', fontSize: '0.85rem', borderLeft: task.status === 'DONE' ? '3px solid var(--success)' : 'none' }}>
-                    <span style={{ color: 'var(--on-surface-variant)' }}>{task.status === 'DONE' ? '✅ ' : ''}{t('response')}: </span>{task.response}
+                {(task.response || task.status === 'PROCESSED') && (
+                  <div style={{ marginTop: '8px', padding: '8px 10px', borderRadius: '8px', background: task.status === 'DONE' ? 'rgba(34,197,94,0.1)' : 'var(--surface-high)', fontSize: '0.85rem', borderLeft: task.status === 'DONE' ? '3px solid var(--success)' : task.status === 'PROCESSED' ? '3px solid var(--secondary)' : 'none' }}>
+                    <span style={{ color: 'var(--on-surface-variant)' }}>{task.status === 'DONE' ? '✅ ' : task.status === 'PROCESSED' ? '⏳ ' : ''}{t('response')}: </span>{task.response || 'No response text'}
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Send, X, Play, Square } from 'lucide-react';
+import { Mic, MicOff, Send, X, Play, Square, Image as ImageIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAppContext } from '../context/AppContext';
 import { useToast } from './Toast';
@@ -8,7 +8,7 @@ import { useToast } from './Toast';
 const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || '';
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || '';
 
-export default function VoiceInput({ onSubmit, placeholder, value, onChange, onAudioSubmit }) {
+export default function VoiceInput({ onSubmit, placeholder, value, onChange, onAudioSubmit, onImageSubmit }) {
   const [text, setText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -20,6 +20,38 @@ export default function VoiceInput({ onSubmit, placeholder, value, onChange, onA
   const timerRef = useRef(null);
   const { t } = useAppContext();
   const showToast = useToast();
+  const fileInputRef = useRef(null);
+
+  const handleImageSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      const { storage } = await import('../firebase');
+      
+      const fileExt = file.name.split('.').pop();
+      const fileName = `images/${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const storageRef = ref(storage, fileName);
+      
+      await uploadBytes(storageRef, file);
+      const downloadUrl = await getDownloadURL(storageRef);
+      
+      if (onImageSubmit) {
+        await onImageSubmit(downloadUrl);
+        showToast('Image attached', 'success');
+      } else {
+        showToast('Image attachment not supported here', 'warning');
+      }
+    } catch (err) {
+      console.error('Image upload error:', err);
+      showToast('Failed to upload image', 'error');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const controlled = typeof value === 'string' && typeof onChange === 'function';
   const inputValue = controlled ? value : text;
@@ -256,14 +288,38 @@ export default function VoiceInput({ onSubmit, placeholder, value, onChange, onA
       }}
     >
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <input
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          ref={fileInputRef}
+          onChange={handleImageSelect}
+        />
         <motion.button
           whileTap={{ scale: 0.9 }}
-          onClick={startRecording}
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
           style={{
             width: '48px', height: '48px', minWidth: '48px', borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'var(--surface-high)',
             color: 'white', border: 'none',
+            opacity: uploading ? 0.5 : 1,
+          }}
+        >
+          <ImageIcon size={22} />
+        </motion.button>
+
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          onClick={startRecording}
+          disabled={uploading}
+          style={{
+            width: '48px', height: '48px', minWidth: '48px', borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'var(--surface-high)',
+            color: 'white', border: 'none',
+            opacity: uploading ? 0.5 : 1,
           }}
         >
           <Mic size={22} />
@@ -281,7 +337,7 @@ export default function VoiceInput({ onSubmit, placeholder, value, onChange, onA
         <motion.button
           whileTap={{ scale: 0.9, opacity: inputValue.trim() ? 1 : 0.5 }}
           onClick={handleSubmit}
-          disabled={!inputValue.trim()}
+          disabled={!inputValue.trim() || uploading}
           style={{
             width: '48px', height: '48px', minWidth: '48px', borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',

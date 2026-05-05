@@ -33,10 +33,10 @@ function TaskResponseInput({ task, onRespond, onAcknowledge, t, showToast }) {
     }
   };
 
-  const handleComplete = async () => {
+  const handleProcessed = async () => {
     setSaving(true);
     try {
-      await onRespond(task.id, value.trim() || '', 'DONE');
+      await onRespond(task.id, value.trim() || '', 'PROCESSED');
     } catch (err) {
       showToast(err.message || t('somethingWentWrong'), 'error');
     } finally {
@@ -95,6 +95,16 @@ function TaskResponseInput({ task, onRespond, onAcknowledge, t, showToast }) {
                 setSaving(false);
               }
             }}
+            onImageSubmit={async (imageUrl) => {
+              setSaving(true);
+              try {
+                await onAcknowledge(task.id, '', null, imageUrl);
+              } catch (err) {
+                showToast(err.message || t('somethingWentWrong'), 'error');
+              } finally {
+                setSaving(false);
+              }
+            }}
             placeholder={t('typeOrSpeakResponse')}
             value={value}
             onChange={setValue}
@@ -102,7 +112,7 @@ function TaskResponseInput({ task, onRespond, onAcknowledge, t, showToast }) {
 
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
-              onClick={handleComplete}
+              onClick={handleProcessed}
               disabled={saving}
               style={{
                 flex: 1, padding: '12px', borderRadius: '12px',
@@ -111,7 +121,7 @@ function TaskResponseInput({ task, onRespond, onAcknowledge, t, showToast }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
               }}
             >
-              ✓ {t('complete') || 'Mark Complete'}
+              ✓ {t('processed') || 'Mark Processed'}
             </button>
           </div>
         </div>
@@ -135,6 +145,60 @@ export default function WorkerDashboard() {
     useAppContext();
   const showToast = useToast();
   const [view, setView] = useState('tasks');
+  const [audioContextAllowed, setAudioContextAllowed] = useState(false);
+
+  // Aggressive 2-minute reminder for pending tasks
+  useEffect(() => {
+    if (tasks.some(t => t.status === 'PENDING')) {
+      const interval = setInterval(() => {
+        playLoudAlarm();
+        if ('vibrate' in navigator) {
+          navigator.vibrate([500, 200, 500, 200, 500]);
+        }
+      }, 120000); // 2 minutes
+      return () => clearInterval(interval);
+    }
+  }, [tasks]);
+
+  const playLoudAlarm = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      
+      // Play 3 loud beeps
+      for (let i = 0; i < 3; i++) {
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(880, ctx.currentTime + i * 0.4); 
+        osc.frequency.setValueAtTime(1108.73, ctx.currentTime + i * 0.4 + 0.1); 
+        
+        gainNode.gain.setValueAtTime(1, ctx.currentTime + i * 0.4);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.4 + 0.3);
+        
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        osc.start(ctx.currentTime + i * 0.4);
+        osc.stop(ctx.currentTime + i * 0.4 + 0.3);
+      }
+    } catch (e) {
+      console.error("Alarm failed:", e);
+    }
+  };
+
+  const unlockAudio = () => {
+    if (!audioContextAllowed) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        ctx.resume().then(() => setAudioContextAllowed(true));
+      }
+    }
+  };
 
   const [hasOnboarded, setHasOnboarded] = useState(
     () => localStorage.getItem(`onboarded_${currentUser?.id}`) === 'true'
@@ -225,6 +289,7 @@ export default function WorkerDashboard() {
 
   return (
     <motion.div
+      onClick={unlockAudio}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
@@ -460,7 +525,13 @@ export default function WorkerDashboard() {
           </div>
 
           <div style={{ padding: '8px 0', borderTop: '1px solid var(--surface-high)', flexShrink: 0 }}>
-            <VoiceInput onSubmit={handleSendMessage} onAudioSubmit={handleSendVoice} placeholder={t('messageOwner')} />
+            <VoiceInput onSubmit={handleSendMessage} onAudioSubmit={handleSendVoice} onImageSubmit={async (imageUrl) => {
+              try {
+                await sendMessage(currentUser.name, 'owner', '', imageUrl);
+              } catch (err) {
+                showToast(err.message || t('somethingWentWrong'), 'error');
+              }
+            }} placeholder={t('messageOwner')} />
           </div>
         </section>
       )}

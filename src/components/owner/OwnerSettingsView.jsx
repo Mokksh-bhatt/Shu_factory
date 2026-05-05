@@ -134,28 +134,42 @@ export default function OwnerSettingsView({
   const testNotification = async () => {
     const lines = [];
     try {
-      const { Capacitor } = await import('@capacitor/core');
-      const { LocalNotifications } = await import('@capacitor/local-notifications');
-      lines.push(`Platform: ${Capacitor.getPlatform()}`);
-      lines.push(`isNative: ${Capacitor.isNativePlatform()}`);
-      if ('Notification' in window) lines.push(`WebPerm: ${Notification.permission}`);
-      if (Capacitor.isNativePlatform()) {
-        const perm = await LocalNotifications.requestPermissions();
-        lines.push(`NativePerm: ${perm.display}`);
-        if (perm.display === 'granted') {
-          await LocalNotifications.schedule({
-            notifications: [{ id: 99999, title: '🔔 Test Alarm', body: 'Notifications work!', channelId: 'shu_alarm_channel', smallIcon: 'ic_launcher' }],
-          });
-          lines.push('Scheduled: OK');
-          if ('vibrate' in navigator) { navigator.vibrate([600,200,600,200,600]); lines.push('Vibrate: sent'); }
-        } else {
-          lines.push('BLOCKED: phone Settings > Apps > Shon Ceramics > Notifications > Allow');
-        }
+      // Raw bridge info
+      const cap = window.Capacitor;
+      lines.push(`window.Capacitor: ${cap ? 'YES' : 'NO'}`);
+      if (cap) {
+        lines.push(`isNative: ${cap.isNative}`);
+        lines.push(`platform: ${cap.getPlatform?.() ?? cap.platform ?? '?'}`);
+        lines.push(`Plugins: ${Object.keys(cap.Plugins || {}).join(', ') || 'none'}`);
+      }
+
+      // Try native plugin directly via bridge (no npm import needed)
+      const LN = cap?.Plugins?.LocalNotifications;
+      lines.push(`LocalNotifications plugin: ${LN ? 'found' : 'NOT found'}`);
+
+      if (LN) {
+        const perm = await LN.requestPermissions();
+        lines.push(`Permission: ${JSON.stringify(perm)}`);
+        await LN.schedule({
+          notifications: [{ id: 99998, title: '🔔 Test Alarm', body: 'Notifications work!', channelId: 'shu_alarm_channel', smallIcon: 'ic_launcher' }],
+        });
+        lines.push('schedule() called OK');
+        if ('vibrate' in navigator) { navigator.vibrate([600,200,600,200,600]); lines.push('vibrate sent'); }
       } else {
-        lines.push('Browser context — open via APK to test native notifications');
+        // Fallback: plain web notification
+        if ('Notification' in window) {
+          lines.push(`WebNotif permission: ${Notification.permission}`);
+          if (Notification.permission === 'granted') {
+            new Notification('Test', { body: 'Web notification test' });
+            lines.push('web notification fired');
+          } else {
+            const r = await Notification.requestPermission();
+            lines.push(`requested: ${r}`);
+          }
+        }
       }
     } catch (err) {
-      lines.push(`ERROR: ${err.message || String(err)}`);
+      lines.push(`ERROR: ${err.message}\n${err.stack?.slice(0,200)}`);
     }
     setNotifDebug(lines.join('\n'));
   };
