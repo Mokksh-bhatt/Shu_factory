@@ -3,7 +3,7 @@ name: Build Android APK
 on:
   push:
     branches: [main, master]
-  workflow_dispatch:  # also allows manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   build:
@@ -25,24 +25,29 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      - name: Cache Android SDK platform-36
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.ANDROID_HOME }}/platforms/android-36
+          key: android-sdk-platform-36-v1
+
+      - name: Install npm dependencies
+        run: npm ci
+
       - name: Install Android SDK platform 36
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
-            "platforms;android-36" \
-            "build-tools;35.0.0" \
-            "platform-tools" 2>&1 | tail -5
+            "platforms;android-36" "build-tools;35.0.0" "platform-tools" 2>&1 | tail -3
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build web app
-        run: npm run build
-
-      - name: Sync Capacitor
-        run: |
-          mkdir -p android/app/src/main/assets/public
-          npx cap copy android
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
@@ -50,14 +55,14 @@ jobs:
       - name: Build debug APK
         run: cd android && ./gradlew assembleDebug --no-daemon
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: ShonCeramics-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      - name: Create Release
+      - name: Create GitHub Release
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
@@ -66,7 +71,10 @@ jobs:
           body: |
             ## Shon Ceramics Android App
 
-            **Alarm notifications active:**
+            **Auto-updates built in** — this APK loads from the live website.
+            New features appear automatically, no reinstall needed.
+
+            **Alarm notifications:**
             - Rings even when phone is on silent
             - Bypasses Do Not Disturb
             - Aggressive vibration pattern
@@ -75,7 +83,7 @@ jobs:
 
             ### Install
             1. Download `app-debug.apk` below
-            2. Open file on your Android phone
+            2. Open on your Android phone
             3. Tap Install (allow Unknown Sources if prompted)
           files: android/app/build/outputs/apk/debug/app-debug.apk
           draft: false

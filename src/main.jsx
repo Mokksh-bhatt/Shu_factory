@@ -97,21 +97,6 @@ if ('serviceWorker' in navigator) {
     }
   });
 
-  // ── Auto-update: detect SW version changes and reload ─────────────────────
-  navigator.serviceWorker.ready.then(reg => {
-    setInterval(() => reg.update(), 60 * 1000);
-    reg.addEventListener('updatefound', () => {
-      const newWorker = reg.installing;
-      if (newWorker) {
-        newWorker.addEventListener('statechange', () => {
-          if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
-            window.location.reload();
-          }
-        });
-      }
-    });
-  });
-
   // Unregister the legacy kill-switch sw.js if still present
   navigator.serviceWorker.getRegistrations().then(registrations => {
     for (const reg of registrations) {
