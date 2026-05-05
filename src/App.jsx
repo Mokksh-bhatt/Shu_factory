@@ -5,6 +5,8 @@ import Login from './components/Login';
 import OwnerDashboard from './components/OwnerDashboard';
 import WorkerDashboard from './components/WorkerDashboard';
 import SplashScreen from './components/SplashScreen';
+import InstallPage from './components/InstallPage';
+import { ToastProvider } from './components/Toast';
 import './App.css';
 
 const RootLayout = () => {
@@ -12,8 +14,9 @@ const RootLayout = () => {
   const [splashDone, setSplashDone] = useState(false);
   const handleSplashFinish = useCallback(() => setSplashDone(true), []);
 
-  if (!splashDone || !authReady) {
-    return <SplashScreen onFinish={handleSplashFinish} />;
+  // Show splash screen only until its animation finishes
+  if (!splashDone) {
+    return <SplashScreen onFinish={handleSplashFinish} isReady={authReady} />;
   }
 
   return (
@@ -26,6 +29,7 @@ const RootLayout = () => {
       )}
 
       <Routes>
+        <Route path="/install" element={<InstallPage />} />
         <Route path="/" element={
           currentUser
             ? <Navigate to={currentUser.role === 'owner' ? '/owner' : '/worker'} />
@@ -46,10 +50,12 @@ const RootLayout = () => {
 
 export default function App() {
   return (
-    <AppProvider>
-      <BrowserRouter>
-        <RootLayout />
-      </BrowserRouter>
-    </AppProvider>
+    <ToastProvider>
+      <AppProvider>
+        <BrowserRouter>
+          <RootLayout />
+        </BrowserRouter>
+      </AppProvider>
+    </ToastProvider>
   );
 }

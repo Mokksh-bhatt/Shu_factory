@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "792288358750",
+    "project_id": "shufactory-cmd-1",
+    "storage_bucket": "shufactory-cmd-1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:792288358750:android:a1b2c3d4e5f60789",
+        "android_client_info": {
+          "package_name": "com.shonfactory.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDuzAKfy5ZrBjz3bOe0xlR_pwQGHLjYB2E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,16 @@
+{
+  "appId": "com.shonfactory.app",
+  "appName": "Shon Ceramics",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  }
+}

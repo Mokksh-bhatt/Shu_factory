@@ -1,17 +1,24 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import logo from '../1654269855758.jpg';
 import { useAppContext } from '../context/AppContext';
 
-export default function SplashScreen({ onFinish }) {
+export default function SplashScreen({ onFinish, isReady = true }) {
   const [fadeOut, setFadeOut] = useState(false);
+  const [minTimePassed, setMinTimePassed] = useState(false);
   const { t } = useAppContext();
 
   useEffect(() => {
-    const timer = setTimeout(() => setFadeOut(true), 800);
-    const end = setTimeout(() => onFinish(), 1200);
-    return () => { clearTimeout(timer); clearTimeout(end); };
-  }, [onFinish]);
+    const timer = setTimeout(() => setMinTimePassed(true), 1200);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (minTimePassed && isReady) {
+      setFadeOut(true);
+      const end = setTimeout(() => onFinish(), 600);
+      return () => clearTimeout(end);
+    }
+  }, [minTimePassed, isReady, onFinish]);
 
   return (
     <AnimatePresence>
@@ -32,7 +39,7 @@ export default function SplashScreen({ onFinish }) {
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.5, ease: 'easeOut' }}
-            src={logo} 
+            src="/images.jpg" 
             alt={t('appName')} 
             style={{
               width: '200px', height: 'auto',

@@ -27,6 +27,18 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, a, [onclick] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+button:active, a:active {
+  transform: scale(0.96);
+  opacity: 0.85;
 }
 
 body {

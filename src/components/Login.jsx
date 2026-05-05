@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Factory, HardHat } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAppContext } from '../context/AppContext';
-import logo from '../1654269855758.jpg';
+import { useToast } from './Toast';
 
 const itemVariants = {
   hidden: { opacity: 0, y: 16 },
@@ -20,6 +20,7 @@ export default function Login() {
   const [workerLanguage, setWorkerLanguage] = useState('');
   const [loading, setLoading] = useState(false);
   const { login, currentUser, t, languageOptions } = useAppContext();
+  const showToast = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -30,7 +31,7 @@ export default function Login() {
 
   const handleLogin = async (role) => {
     if (!name.trim() || !password.trim()) {
-      alert(t('nameAndPasswordRequired'));
+      showToast(t('nameAndPasswordRequired'), 'warning');
       return;
     }
 
@@ -45,7 +46,7 @@ export default function Login() {
       await login(role, name, 'General', password, preferred);
       navigate(role === 'owner' ? '/owner' : '/worker');
     } catch (err) {
-      alert(err.message || t('somethingWentWrong'));
+      showToast(err.message || t('somethingWentWrong'), 'error');
     } finally {
       setLoading(false);
     }
@@ -54,7 +55,7 @@ export default function Login() {
   const fields = [
     <motion.div key="logo" custom={0} variants={itemVariants} initial="hidden" animate="visible" style={{ textAlign: 'center', marginBottom: 8 }}>
       <img
-        src={logo}
+        src="/images.jpg"
         alt={t('appName')}
         style={{ width: '180px', height: 'auto', margin: '0 auto', display: 'block', borderRadius: '12px' }}
       />

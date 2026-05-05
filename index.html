@@ -7,8 +7,11 @@
     <meta name="description" content="Shu Factory — Task allocation, voice chat, and factory floor communication for owners and workers." />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/jpeg" href="/images.jpg" />
+    <link rel="apple-touch-icon" href="/images.jpg" />
+    <link rel="preload" as="image" href="/images.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
@@ -17,5 +20,18 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(async function(OneSignal) {
+        await OneSignal.init({
+          appId: "3ca07406-7594-42ef-ade4-39b98a4ef565",
+          safari_web_id: "web.onesignal.auto.328b76bd-f95e-4ddf-b873-dc7d80d0ffe4",
+          notifyButton: {
+            enable: false,
+          }
+        });
+      });
+    </script>
   </body>
 </html>
