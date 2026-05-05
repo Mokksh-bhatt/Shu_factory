@@ -21,7 +21,7 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Set up Java 17
+      - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
           java-version: '21'
@@ -48,10 +48,18 @@ jobs:
       - name: Build web app
         run: npm run build
 
-      - name: Copy web assets into Android
+      # Deploy updated web app to Firebase Hosting so all APKs auto-update
+      - name: Deploy to Firebase Hosting
+        run: npx firebase-tools deploy --only hosting --token "${{ secrets.FIREBASE_TOKEN }}" --non-interactive
+        continue-on-error: true   # don't fail the APK build if deploy fails
+
+      - name: Copy web assets into APK (offline fallback)
         run: |
           mkdir -p android/app/src/main/assets/public
           npx cap copy android
+
+      - name: Install ImageMagick
+        run: sudo apt-get install -y imagemagick
 
       - name: Generate launcher icons from logo
         run: |
@@ -64,14 +72,11 @@ jobs:
               xxxhdpi) size=192; fg=432;;
             esac
             dir="android/app/src/main/res/mipmap-${density}"
-            # Square icon
             convert public/logo.jpg -resize "${size}x${size}^" -gravity Center -extent "${size}x${size}" "$dir/ic_launcher.png"
-            # Round icon (circular crop)
             convert public/logo.jpg -resize "${size}x${size}^" -gravity Center -extent "${size}x${size}" \
               \( +clone -alpha transparent -background none \
                  -fill white -draw "circle $((size/2)),$((size/2)) $((size/2)),1" \) \
               -alpha set -compose DstIn -composite "$dir/ic_launcher_round.png"
-            # Adaptive foreground (logo centred with 15% padding on dark bg)
             pad=$((fg * 15 / 100))
             inner=$((fg - pad * 2))
             convert -size "${fg}x${fg}" xc:"#0f0f11" \
@@ -107,20 +112,21 @@ jobs:
           body: |
             ## Shon Ceramics Android App
 
-            **Auto-updates built in** — this APK loads from the live website.
-            New features appear automatically, no reinstall needed.
+            **Install once — updates automatically.**
+            Workers install this APK one time. All future feature updates
+            happen silently in the background via Firebase — no reinstall ever needed.
 
             **Alarm notifications:**
             - Rings even when phone is on silent
             - Bypasses Do Not Disturb
-            - Aggressive vibration pattern
+            - Aggressive vibration
             - Stays on screen until dismissed
             - Red LED flash
 
             ### Install
             1. Download `app-debug.apk` below
-            2. Open on your Android phone
-            3. Tap Install (allow Unknown Sources if prompted)
+            2. Open on Android phone → tap Install
+            3. Allow "Unknown Sources" if prompted
           files: android/app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false

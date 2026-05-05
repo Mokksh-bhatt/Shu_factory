@@ -3,7 +3,9 @@
   "appName": "Shon Ceramics",
   "webDir": "dist",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "url": "https://shufactory-cmd-1.web.app",
+    "cleartext": false
   },
   "android": {
     "allowMixedContent": true
