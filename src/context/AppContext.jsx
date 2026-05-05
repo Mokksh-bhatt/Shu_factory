@@ -2,8 +2,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { signInAnonymously, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, auth } from '../firebase';
-import { LocalNotifications } from '@capacitor/local-notifications';
-import { Capacitor } from '@capacitor/core';
 import {
   collection,
   addDoc,
@@ -261,21 +259,16 @@ export const AppProvider = ({ children }) => {
 
   // Request notification permission + pre-create alarm channel on startup
   useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
     (async () => {
       try {
+        const { Capacitor } = await import('@capacitor/core');
+        if (!Capacitor.isNativePlatform()) return;
+        const { LocalNotifications } = await import('@capacitor/local-notifications');
         const perm = await LocalNotifications.requestPermissions();
         console.log('[LocalNotif] permission:', perm.display);
-        // Channel is already created in MainActivity.java with USAGE_ALARM.
-        // Calling createChannel again is a no-op on Android (channels are immutable after first creation).
         await LocalNotifications.createChannel({
-          id: 'shu_alarm_channel',
-          name: 'Factory Alerts',
-          importance: 5,
-          visibility: 1,
-          vibration: true,
-          lights: true,
-          lightColor: '#FF0000',
+          id: 'shu_alarm_channel', name: 'Factory Alerts',
+          importance: 5, visibility: 1, vibration: true, lights: true, lightColor: '#FF0000',
         });
         console.log('[LocalNotif] alarm channel ready');
       } catch (err) {
@@ -286,26 +279,16 @@ export const AppProvider = ({ children }) => {
 
   // Fire a loud native notification via the alarm channel (works on Android APK even in background)
   const fireNativeAlarm = useCallback(async (title, body) => {
-    if (!Capacitor.isNativePlatform()) return;
     try {
+      const { Capacitor } = await import('@capacitor/core');
+      if (!Capacitor.isNativePlatform()) return;
+      const { LocalNotifications } = await import('@capacitor/local-notifications');
       const id = Math.floor(Math.random() * 2_000_000_000) + 1;
       await LocalNotifications.schedule({
-        notifications: [{
-          id,
-          title,
-          body,
-          channelId: 'shu_alarm_channel',
-          smallIcon: 'ic_launcher',
-          iconColor: '#028a3f',
-          ongoing: false,
-          autoCancel: false,
-        }],
+        notifications: [{ id, title, body, channelId: 'shu_alarm_channel', smallIcon: 'ic_launcher', iconColor: '#028a3f' }],
       });
       console.log('[LocalNotif] fired id', id, title);
-      // Fallback vibration via Web API in case notification is delayed
-      if ('vibrate' in navigator) {
-        navigator.vibrate([600, 200, 600, 200, 600, 200, 1000, 400, 600]);
-      }
+      if ('vibrate' in navigator) navigator.vibrate([600, 200, 600, 200, 600, 200, 1000, 400, 600]);
     } catch (err) {
       console.warn('[LocalNotif] schedule failed:', err);
     }
@@ -1123,13 +1106,13 @@ export const AppProvider = ({ children }) => {
           sendOneSignalPush(
             target,
             '💬 Message from Owner',
-            `"${cleanMessage.length > 80 ? cleanMessage.slice(0, 80) + '...' : cleanMessage}"\n👤 ${currentUser?.name || 'Owner'} sent you a message`
+            `"${cleanTextStr.length > 80 ? cleanTextStr.slice(0, 80) + '...' : cleanTextStr}"\n👤 ${currentUser?.name || 'Owner'} sent you a message`
           );
         } else if (target === 'owner') {
           sendOneSignalPush(
             null,
             `💬 ${sender} sent a message`,
-            `"${cleanMessage.length > 80 ? cleanMessage.slice(0, 80) + '...' : cleanMessage}"`,
+            `"${cleanTextStr.length > 80 ? cleanTextStr.slice(0, 80) + '...' : cleanTextStr}"`,
             { targetRole: 'owner' }
           );
         }
