@@ -19,7 +19,6 @@ import {
 } from 'firebase/firestore';
 import { DEFAULT_LANGUAGE, LANGUAGE_OPTIONS, translate } from '../i18n';
 import { isStrongEnoughPassword, isValidWorkerName } from '../utils/security';
-import { LocalNotifications } from '@capacitor/local-notifications';
 
 const AppContext = createContext();
 export const useAppContext = () => useContext(AppContext);
@@ -260,18 +259,21 @@ export const AppProvider = ({ children }) => {
 
   // Request notification permission + ensure alarm channel exists on startup
   useEffect(() => {
-    LocalNotifications.requestPermissions().catch(() => {});
-    LocalNotifications.createChannel({
-      id: 'shu_alarm_channel', name: 'Factory Alerts',
-      importance: 5, visibility: 1, vibration: true, lights: true, lightColor: '#FF0000',
+    import('@capacitor/local-notifications').then(({ LocalNotifications: LN }) => {
+      LN.requestPermissions().catch(() => {});
+      LN.createChannel({
+        id: 'shu_alarm_channel', name: 'Factory Alerts',
+        importance: 5, visibility: 1, vibration: true, lights: true, lightColor: '#FF0000',
+      }).catch(() => {});
     }).catch(() => {});
   }, []);
 
   // Fire a loud native notification via the alarm channel
   const fireNativeAlarm = useCallback(async (title, body) => {
     try {
+      const { LocalNotifications: LN } = await import('@capacitor/local-notifications');
       const id = Math.floor(Math.random() * 2_000_000_000) + 1;
-      await LocalNotifications.schedule({
+      await LN.schedule({
         notifications: [{ id, title, body, channelId: 'shu_alarm_channel', smallIcon: 'ic_launcher', iconColor: '#028a3f' }],
       });
       if ('vibrate' in navigator) navigator.vibrate([600, 200, 600, 200, 600, 200, 1000, 400, 600]);

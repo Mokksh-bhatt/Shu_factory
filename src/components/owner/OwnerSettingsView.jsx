@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Shield, Trash2, UserPlus } from 'lucide-react';
 import { useToast } from '../Toast';
 import ConfirmModal from '../ConfirmModal';
-import { LocalNotifications } from '@capacitor/local-notifications';
 
 
 export default function OwnerSettingsView({
@@ -141,21 +140,24 @@ export default function OwnerSettingsView({
         lines.push(`isNative: ${cap.isNative}`);
         lines.push(`platform: ${cap.getPlatform?.() ?? cap.platform ?? '?'}`);
       }
-      lines.push(`LN proxy type: ${typeof LocalNotifications}`);
 
-      const perm = await LocalNotifications.requestPermissions();
+      lines.push('importing @capacitor/local-notifications...');
+      const { LocalNotifications: LN } = await import('@capacitor/local-notifications');
+      lines.push(`import OK, type: ${typeof LN}`);
+
+      const perm = await LN.requestPermissions();
       lines.push(`Permission: ${JSON.stringify(perm)}`);
 
-      await LocalNotifications.createChannel({
+      await LN.createChannel({
         id: 'shu_alarm_channel', name: 'Factory Alerts',
         importance: 5, visibility: 1, vibration: true, lights: true, lightColor: '#FF0000',
       });
-      lines.push('channel created OK');
+      lines.push('channel OK');
 
-      await LocalNotifications.schedule({
+      await LN.schedule({
         notifications: [{ id: 99998, title: 'Test Alarm', body: 'Notifications work!', channelId: 'shu_alarm_channel', smallIcon: 'ic_launcher' }],
       });
-      lines.push('schedule() called OK — check notification shade!');
+      lines.push('schedule() OK — check notification shade!');
 
       if ('vibrate' in navigator) { navigator.vibrate([600,200,600,200,600]); lines.push('vibrate sent'); }
     } catch (err) {
