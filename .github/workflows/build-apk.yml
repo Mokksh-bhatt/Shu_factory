@@ -45,6 +45,14 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Build web app
+        run: npm run build
+
+      - name: Copy web assets into Android
+        run: |
+          mkdir -p android/app/src/main/assets/public
+          npx cap copy android
+
       - name: Install Android SDK platform 36
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
