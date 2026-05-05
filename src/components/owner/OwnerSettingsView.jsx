@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Shield, Trash2, UserPlus } from 'lucide-react';
 import { useToast } from '../Toast';
 import ConfirmModal from '../ConfirmModal';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 
 export default function OwnerSettingsView({
@@ -130,8 +132,59 @@ export default function OwnerSettingsView({
     }
   };
 
+  const [notifDebug, setNotifDebug] = useState('');
+  const testNotification = async () => {
+    const lines = [];
+    try {
+      lines.push(`Platform: ${Capacitor.getPlatform()}`);
+      lines.push(`isNative: ${Capacitor.isNativePlatform()}`);
+      if ('Notification' in window) lines.push(`WebPerm: ${Notification.permission}`);
+
+      if (Capacitor.isNativePlatform()) {
+        const perm = await LocalNotifications.requestPermissions();
+        lines.push(`NativePerm: ${perm.display}`);
+        if (perm.display === 'granted') {
+          await LocalNotifications.schedule({
+            notifications: [{
+              id: 99999,
+              title: '🔔 Test Alarm',
+              body: 'If you see this — notifications work!',
+              channelId: 'shu_alarm_channel',
+              smallIcon: 'ic_launcher',
+            }],
+          });
+          lines.push('Scheduled: OK');
+          if ('vibrate' in navigator) {
+            navigator.vibrate([600, 200, 600, 200, 600]);
+            lines.push('Vibrate: sent');
+          }
+        } else {
+          lines.push('BLOCKED: Go to phone Settings > Apps > Shon Ceramics > Notifications > Allow');
+        }
+      } else {
+        lines.push('Running in BROWSER — native notifications not available here');
+        lines.push('Install the APK to test');
+      }
+    } catch (err) {
+      lines.push(`ERROR: ${err.message || String(err)}`);
+    }
+    setNotifDebug(lines.join('\n'));
+  };
+
   return (
     <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+        {/* ── Notification test panel ── */}
+        <div className="card" style={{ background: 'var(--background)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <strong style={{ color: 'var(--primary)' }}>🔔 Notification Test</strong>
+          <button className="btn-primary" onClick={testNotification}>Tap to Test Alarm</button>
+          {notifDebug ? (
+            <pre style={{ fontSize: '0.75rem', background: '#111', color: '#0f0', padding: '8px', borderRadius: '8px', whiteSpace: 'pre-wrap', margin: 0 }}>
+              {notifDebug}
+            </pre>
+          ) : null}
+        </div>
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
             <h3 style={{ margin: 0, color: 'var(--primary)', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
