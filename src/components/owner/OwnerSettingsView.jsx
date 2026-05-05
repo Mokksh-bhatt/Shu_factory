@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Shield, Trash2, UserPlus } from 'lucide-react';
 import { useToast } from '../Toast';
 import ConfirmModal from '../ConfirmModal';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 
 export default function OwnerSettingsView({
@@ -134,42 +135,31 @@ export default function OwnerSettingsView({
   const testNotification = async () => {
     const lines = [];
     try {
-      // Raw bridge info
       const cap = window.Capacitor;
       lines.push(`window.Capacitor: ${cap ? 'YES' : 'NO'}`);
       if (cap) {
         lines.push(`isNative: ${cap.isNative}`);
         lines.push(`platform: ${cap.getPlatform?.() ?? cap.platform ?? '?'}`);
-        lines.push(`Plugins: ${Object.keys(cap.Plugins || {}).join(', ') || 'none'}`);
       }
+      lines.push(`LN proxy type: ${typeof LocalNotifications}`);
 
-      // Try native plugin directly via bridge (no npm import needed)
-      const LN = cap?.Plugins?.LocalNotifications;
-      lines.push(`LocalNotifications plugin: ${LN ? 'found' : 'NOT found'}`);
+      const perm = await LocalNotifications.requestPermissions();
+      lines.push(`Permission: ${JSON.stringify(perm)}`);
 
-      if (LN) {
-        const perm = await LN.requestPermissions();
-        lines.push(`Permission: ${JSON.stringify(perm)}`);
-        await LN.schedule({
-          notifications: [{ id: 99998, title: '🔔 Test Alarm', body: 'Notifications work!', channelId: 'shu_alarm_channel', smallIcon: 'ic_launcher' }],
-        });
-        lines.push('schedule() called OK');
-        if ('vibrate' in navigator) { navigator.vibrate([600,200,600,200,600]); lines.push('vibrate sent'); }
-      } else {
-        // Fallback: plain web notification
-        if ('Notification' in window) {
-          lines.push(`WebNotif permission: ${Notification.permission}`);
-          if (Notification.permission === 'granted') {
-            new Notification('Test', { body: 'Web notification test' });
-            lines.push('web notification fired');
-          } else {
-            const r = await Notification.requestPermission();
-            lines.push(`requested: ${r}`);
-          }
-        }
-      }
+      await LocalNotifications.createChannel({
+        id: 'shu_alarm_channel', name: 'Factory Alerts',
+        importance: 5, visibility: 1, vibration: true, lights: true, lightColor: '#FF0000',
+      });
+      lines.push('channel created OK');
+
+      await LocalNotifications.schedule({
+        notifications: [{ id: 99998, title: 'Test Alarm', body: 'Notifications work!', channelId: 'shu_alarm_channel', smallIcon: 'ic_launcher' }],
+      });
+      lines.push('schedule() called OK — check notification shade!');
+
+      if ('vibrate' in navigator) { navigator.vibrate([600,200,600,200,600]); lines.push('vibrate sent'); }
     } catch (err) {
-      lines.push(`ERROR: ${err.message}\n${err.stack?.slice(0,200)}`);
+      lines.push(`ERROR: ${err.message}\n${err.stack?.slice(0,300)}`);
     }
     setNotifDebug(lines.join('\n'));
   };
