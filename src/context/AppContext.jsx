@@ -2,6 +2,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { signInAnonymously, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, auth } from '../firebase';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import {
   collection,
   addDoc,
@@ -257,6 +258,37 @@ export const AppProvider = ({ children }) => {
     } catch {}
   }, []);
 
+  // Fire a loud native notification via the alarm channel (works on Android APK even in background)
+  const fireNativeAlarm = useCallback(async (title, body) => {
+    try {
+      await LocalNotifications.requestPermissions();
+      await LocalNotifications.createChannel({
+        id: 'shu_alarm_channel',
+        name: 'Factory Alerts',
+        importance: 5,
+        visibility: 1,
+        sound: 'default',
+        vibration: true,
+        lights: true,
+        lightColor: '#FF0000',
+        description: 'Urgent factory alerts — bypasses silent mode',
+      });
+      await LocalNotifications.schedule({
+        notifications: [{
+          id: Math.floor(Math.random() * 100000),
+          title,
+          body,
+          channelId: 'shu_alarm_channel',
+          sound: 'default',
+          smallIcon: 'ic_launcher',
+          iconColor: '#028a3f',
+        }],
+      });
+    } catch {
+      // Not running in native APK — fall back silently
+    }
+  }, []);
+
   const playLoudNotification = useCallback((mode = 'worker') => {
     // Let SW-registered main.jsx audio engine handle it if available (works in background)
     if (window.__playAlarmSW) {
@@ -405,11 +437,10 @@ export const AppProvider = ({ children }) => {
           if (incoming.length > 0) {
             playLoudNotification('worker');
             const first = incoming[0];
-            postAlarmToSW(
-              `📋 New Task Assigned`,
-              `${first.important ? '🔴 IMPORTANT: ' : ''}${first.description?.slice(0, 80) || '🎤 Voice task'}`,
-              'worker'
-            );
+            const taskTitle = `📋 New Task Assigned`;
+            const taskBody = `${first.important ? '🔴 IMPORTANT: ' : ''}${first.description?.slice(0, 80) || '🎤 Voice task'}`;
+            postAlarmToSW(taskTitle, taskBody, 'worker');
+            fireNativeAlarm(taskTitle, taskBody);
           }
         }
 
@@ -423,11 +454,10 @@ export const AppProvider = ({ children }) => {
             if (newCount > prevCount && prevCount >= 0 && prevTasksRef.current.length > 0) {
               playLoudNotification('owner');
               const lastReply = task.replies?.[task.replies.length - 1];
-              postAlarmToSW(
-                `💬 ${task.workerName} replied`,
-                lastReply?.text?.slice(0, 80) || '🎤 Voice reply',
-                'owner'
-              );
+              const replyTitle = `💬 ${task.workerName} replied`;
+              const replyBody = lastReply?.text?.slice(0, 80) || '🎤 Voice reply';
+              postAlarmToSW(replyTitle, replyBody, 'owner');
+              fireNativeAlarm(replyTitle, replyBody);
               break;
             }
           }
@@ -440,7 +470,7 @@ export const AppProvider = ({ children }) => {
       (err) => console.error('Tasks listener error:', err),
     );
     return unsub;
-  }, [authReady, currentUser, notificationsEnabled, playLoudNotification, postAlarmToSW, t]);
+  }, [authReady, currentUser, notificationsEnabled, playLoudNotification, postAlarmToSW, fireNativeAlarm, t]);
 
   useEffect(() => {
     if (!authReady) return undefined;
@@ -462,25 +492,23 @@ export const AppProvider = ({ children }) => {
       if (currentUser.role === 'worker' && lastMsg.sender === 'owner') {
         if (activeChatRef.current !== 'GLOBAL' && activeChatRef.current !== 'owner') {
           playLoudNotification('worker');
-          postAlarmToSW(
-            `💬 Message from Owner`,
-            lastMsg.text?.slice(0, 80) || '🎤 Voice message',
-            'worker'
-          );
+          const mt = `💬 Message from Owner`;
+          const mb = lastMsg.text?.slice(0, 80) || '🎤 Voice message';
+          postAlarmToSW(mt, mb, 'worker');
+          fireNativeAlarm(mt, mb);
         }
       }
       if (currentUser.role === 'owner' && lastMsg.sender !== 'owner') {
         if (activeChatRef.current !== lastMsg.sender) {
           playLoudNotification('owner');
-          postAlarmToSW(
-            `💬 ${lastMsg.sender}`,
-            lastMsg.text?.slice(0, 80) || '🎤 Voice message',
-            'owner'
-          );
+          const mt = `💬 ${lastMsg.sender}`;
+          const mb = lastMsg.text?.slice(0, 80) || '🎤 Voice message';
+          postAlarmToSW(mt, mb, 'owner');
+          fireNativeAlarm(mt, mb);
         }
       }
     }
-  }, [messages, currentUser, notificationsEnabled, playLoudNotification, postAlarmToSW, t]);
+  }, [messages, currentUser, notificationsEnabled, playLoudNotification, postAlarmToSW, fireNativeAlarm, t]);
 
   // 24-hour overdue task reminder system
   useEffect(() => {
@@ -908,9 +936,9 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const addTask = async (description, workerName, important = false, audioUrl = null) => {
+  const addTask = async (description, workerName, important = false, audioUrl = null, imageUrl = null) => {
     const cleanDescription = cleanText(description);
-    if (!cleanDescription && !audioUrl) return;
+    if (!cleanDescription && !audioUrl && !imageUrl) return;
     if (cleanDescription) assertMaxText(cleanDescription, MAX_TEXT_LENGTH, t('taskTooLong'));
 
     try {
@@ -924,6 +952,7 @@ export const AppProvider = ({ children }) => {
         replies: [],
         seenByWorker: null,
         audioUrl: audioUrl || null,
+        imageUrl: imageUrl || null,
         createdAt: serverTimestamp(),
         createdBy: currentUser?.name || 'owner',
       });
@@ -931,10 +960,12 @@ export const AppProvider = ({ children }) => {
       const dept = worker?.category || 'General';
       const pushBody = audioUrl
         ? `🎤 Voice task assigned\n👤 From: ${currentUser?.name || 'Owner'}\n🏭 Dept: ${dept}`
+        : imageUrl
+        ? `🖼️ Image task assigned\n👤 From: ${currentUser?.name || 'Owner'}\n🏭 Dept: ${dept}`
         : `${important ? '⚠️ IMPORTANT: ' : ''}${cleanDescription}\n👤 From: ${currentUser?.name || 'Owner'}\n🏭 Dept: ${dept}`;
       sendOneSignalPush(
         workerName,
-        important ? '🔴 Urgent Task from Owner' : (audioUrl ? '🎤 Voice Task Assigned' : '📋 New Task Assigned'),
+        important ? '🔴 Urgent Task from Owner' : (audioUrl ? '🎤 Voice Task Assigned' : imageUrl ? '🖼️ Image Task Assigned' : '📋 New Task Assigned'),
         pushBody
       );
     } catch (err) {
@@ -981,9 +1012,9 @@ export const AppProvider = ({ children }) => {
   };
 
   // Acknowledge a task (reply without completing)
-  const acknowledgeTask = async (taskId, replyText, audioUrl) => {
+  const acknowledgeTask = async (taskId, replyText, audioUrl = null, imageUrl = null) => {
     const cleanReply = cleanText(replyText);
-    if (!cleanReply && !audioUrl) return;
+    if (!cleanReply && !audioUrl && !imageUrl) return;
     if (cleanReply) assertMaxText(cleanReply, MAX_TEXT_LENGTH, t('responseTooLong'));
 
     try {
@@ -997,6 +1028,7 @@ export const AppProvider = ({ children }) => {
         at: Date.now(),
       };
       if (audioUrl) newReply.audioUrl = audioUrl;
+      if (imageUrl) newReply.imageUrl = imageUrl;
 
       await updateDoc(taskRef, {
         replies: [...existingReplies, newReply],
@@ -1050,17 +1082,17 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const sendMessage = async (sender, target, text) => {
-    const cleanMessage = cleanText(text);
-    if (!cleanMessage) return;
-    assertMaxText(cleanMessage, MAX_TEXT_LENGTH, t('messageTooLong'));
+  const sendMessage = async (sender, target, text, imageUrl = null) => {
+    const cleanTextStr = cleanText(text);
+    if (!cleanTextStr && !imageUrl) return;
+    if (cleanTextStr) assertMaxText(cleanTextStr, MAX_TEXT_LENGTH, t('messageTooLong'));
 
     try {
       await addDoc(collection(db, 'messages'), {
         sender,
         target,
-        text: cleanMessage,
-        audioUrl: null,
+        text: cleanTextStr || '🖼️ Image attached',
+        imageUrl: imageUrl || null,
         createdAt: serverTimestamp(),
       });
       // Push notification to the target via OneSignal
