@@ -72,15 +72,15 @@ jobs:
               xxxhdpi) size=192; fg=432;;
             esac
             dir="android/app/src/main/res/mipmap-${density}"
-            convert public/logo.jpg -resize "${size}x${size}^" -gravity Center -extent "${size}x${size}" "$dir/ic_launcher.png"
-            convert public/logo.jpg -resize "${size}x${size}^" -gravity Center -extent "${size}x${size}" \
+            convert public/images.jpg -resize "${size}x${size}^" -gravity Center -extent "${size}x${size}" "$dir/ic_launcher.png"
+            convert public/images.jpg -resize "${size}x${size}^" -gravity Center -extent "${size}x${size}" \
               \( +clone -alpha transparent -background none \
                  -fill white -draw "circle $((size/2)),$((size/2)) $((size/2)),1" \) \
               -alpha set -compose DstIn -composite "$dir/ic_launcher_round.png"
             pad=$((fg * 15 / 100))
             inner=$((fg - pad * 2))
             convert -size "${fg}x${fg}" xc:"#0f0f11" \
-              \( public/logo.jpg -resize "${inner}x${inner}^" -gravity Center -extent "${inner}x${inner}" \) \
+              \( public/images.jpg -resize "${inner}x${inner}^" -gravity Center -extent "${inner}x${inner}" \) \
               -gravity Center -composite "$dir/ic_launcher_foreground.png"
           done
 
