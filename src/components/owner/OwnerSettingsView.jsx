@@ -2,8 +2,6 @@ import { useState } from 'react';
 import { Shield, Trash2, UserPlus } from 'lucide-react';
 import { useToast } from '../Toast';
 import ConfirmModal from '../ConfirmModal';
-import { Capacitor } from '@capacitor/core';
-import { LocalNotifications } from '@capacitor/local-notifications';
 
 
 export default function OwnerSettingsView({
@@ -136,34 +134,25 @@ export default function OwnerSettingsView({
   const testNotification = async () => {
     const lines = [];
     try {
+      const { Capacitor } = await import('@capacitor/core');
+      const { LocalNotifications } = await import('@capacitor/local-notifications');
       lines.push(`Platform: ${Capacitor.getPlatform()}`);
       lines.push(`isNative: ${Capacitor.isNativePlatform()}`);
       if ('Notification' in window) lines.push(`WebPerm: ${Notification.permission}`);
-
       if (Capacitor.isNativePlatform()) {
         const perm = await LocalNotifications.requestPermissions();
         lines.push(`NativePerm: ${perm.display}`);
         if (perm.display === 'granted') {
           await LocalNotifications.schedule({
-            notifications: [{
-              id: 99999,
-              title: '🔔 Test Alarm',
-              body: 'If you see this — notifications work!',
-              channelId: 'shu_alarm_channel',
-              smallIcon: 'ic_launcher',
-            }],
+            notifications: [{ id: 99999, title: '🔔 Test Alarm', body: 'Notifications work!', channelId: 'shu_alarm_channel', smallIcon: 'ic_launcher' }],
           });
           lines.push('Scheduled: OK');
-          if ('vibrate' in navigator) {
-            navigator.vibrate([600, 200, 600, 200, 600]);
-            lines.push('Vibrate: sent');
-          }
+          if ('vibrate' in navigator) { navigator.vibrate([600,200,600,200,600]); lines.push('Vibrate: sent'); }
         } else {
-          lines.push('BLOCKED: Go to phone Settings > Apps > Shon Ceramics > Notifications > Allow');
+          lines.push('BLOCKED: phone Settings > Apps > Shon Ceramics > Notifications > Allow');
         }
       } else {
-        lines.push('Running in BROWSER — native notifications not available here');
-        lines.push('Install the APK to test');
+        lines.push('Browser context — open via APK to test native notifications');
       }
     } catch (err) {
       lines.push(`ERROR: ${err.message || String(err)}`);
