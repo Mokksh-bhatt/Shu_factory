@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronLeft } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
@@ -7,10 +7,14 @@ import VoiceInput from '../VoiceInput';
 import TranslatedText from '../TranslatedText';
 import { formatTime } from '../../utils/formatTime';
 import { isInDateRange, groupByDate, formatDateMarker } from '../../utils/dateUtils';
+import ImageLightbox from '../ImageLightbox';
 
 export default function OwnerChatView({ partner, onBack, dateFilter, setDateFilter, t, language }) {
-  const { getConversation, sendMessage, sendVoiceMessage, setActiveChat } = useAppContext();
+  const { getConversation, sendMessage, sendVoiceMessage, setActiveChat, currentUser } = useAppContext();
   const showToast = useToast();
+  const [lightboxSrc, setLightboxSrc] = useState(null);
+  const messagesEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
 
   const convo = useMemo(() => getConversation(partner), [getConversation, partner]);
 
@@ -22,9 +26,18 @@ export default function OwnerChatView({ partner, onBack, dateFilter, setDateFilt
   const filtered = useMemo(() => convo.filter((msg) => isInDateRange(msg.createdAt, dateFilter)), [convo, dateFilter]);
   const groups = useMemo(() => groupByDate(filtered, (msg) => msg.createdAt), [filtered]);
 
+  useEffect(() => {
+    setTimeout(() => {
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      }
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    }, 100);
+  }, [filtered]);
+
   const handleSendMessage = async (text) => {
     try {
-      await sendMessage('owner', partner, text);
+      await sendMessage(currentUser.name, partner, text);
     } catch (err) {
       showToast(err.message || t('somethingWentWrong'), 'error');
     }
@@ -32,7 +45,7 @@ export default function OwnerChatView({ partner, onBack, dateFilter, setDateFilt
 
   const handleSendVoice = async (audioUrl, duration) => {
     try {
-      await sendVoiceMessage('owner', partner, audioUrl, duration);
+      await sendVoiceMessage(currentUser.name, partner, audioUrl, duration);
     } catch (err) {
       showToast(err.message || t('somethingWentWrong'), 'error');
     }
@@ -60,7 +73,7 @@ export default function OwnerChatView({ partner, onBack, dateFilter, setDateFilt
         </select>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingBottom: '10px' }}>
+      <div ref={chatContainerRef} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingBottom: '10px' }}>
         {filtered.length === 0 && <p style={{ color: 'var(--on-surface-variant)', textAlign: 'center', marginTop: '40px' }}>{t('noMessagesYet')}</p>}
         {groups.map((group) => (
           <div key={group.key}>
@@ -70,46 +83,68 @@ export default function OwnerChatView({ partner, onBack, dateFilter, setDateFilt
             {group.items.map((msg) => (
               <div
                 key={msg.id}
-                style={{
-                  alignSelf: msg.sender === 'owner' ? 'flex-end' : 'flex-start',
-                  marginLeft: msg.sender === 'owner' ? 'auto' : 0,
-                  background: msg.sender === 'owner' ? 'var(--primary)' : 'var(--surface-high)',
-                  color: msg.sender === 'owner' ? 'var(--on-primary)' : 'var(--on-background)',
-                  padding: '8px 14px',
-                  borderRadius: '16px',
-                  maxWidth: '85%',
-                  fontSize: '0.95rem',
-                  marginBottom: '6px',
-                }}
+                style={(() => {
+                  const cleanMe = currentUser.name?.toLowerCase().trim();
+                  const cleanSender = msg.sender?.toLowerCase().trim();
+                  const mainOwnerClean = 'himanshu'; // Fallback check
+                  const isMe = cleanSender === cleanMe || 
+                               cleanSender === 'owner' || 
+                               (currentUser.role === 'owner' && (cleanSender === 'admin@shonceramics.com' || cleanSender === mainOwnerClean));
+                  return {
+                    alignSelf: isMe ? 'flex-end' : 'flex-start',
+                    marginLeft: isMe ? 'auto' : 0,
+                    background: isMe ? 'var(--primary)' : 'var(--surface-high)',
+                    color: isMe ? 'var(--on-primary)' : 'var(--on-background)',
+                    padding: '8px 14px',
+                    borderRadius: '16px',
+                    maxWidth: '85%',
+                    fontSize: '0.95rem',
+                    marginBottom: '6px',
+                  };
+                })()}
               >
                 <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>
                   {msg.sender} - {formatTime(msg.createdAt, language)}
                 </div>
                 {msg.text && <TranslatedText text={msg.text} targetLang={language} />}
                 {msg.imageUrl && (
-                  <img src={msg.imageUrl} alt="Message Attachment" style={{ width: '100%', maxWidth: '300px', height: 'auto', marginTop: '6px', borderRadius: '8px' }} />
+                  <img src={msg.imageUrl} alt="Message Attachment" onClick={() => setLightboxSrc(msg.imageUrl)} style={{ width: '100%', maxWidth: '300px', height: 'auto', marginTop: '6px', borderRadius: '8px', cursor: 'pointer' }} />
                 )}
                 {msg.audioUrl && (
                   <audio controls src={msg.audioUrl} style={{ width: '100%', height: '32px', marginTop: '6px', borderRadius: '8px' }} />
+                )}
+                {msg.documentUrl && (
+                  <a href={msg.documentUrl} onClick={(e) => { e.preventDefault(); window.open(msg.documentUrl, window.Capacitor?.isNativePlatform() ? '_system' : '_blank'); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', padding: '8px 12px', background: 'rgba(0,0,0,0.1)', borderRadius: '8px', color: 'inherit', textDecoration: 'none', fontSize: '0.85rem' }}>
+                    📄 {msg.documentName || 'Download Document'}
+                  </a>
                 )}
               </div>
             ))}
           </div>
         ))}
+        <div ref={messagesEndRef} />
       </div>
 
       <VoiceInput 
         onSubmit={handleSendMessage} 
         onAudioSubmit={handleSendVoice} 
-        onImageSubmit={async (imageUrl) => {
+        onImageSubmit={async (imageUrl, imageText) => {
           try {
-            await sendMessage('owner', partner, '', imageUrl);
+            await sendMessage(currentUser.name, partner, imageText || '', imageUrl);
+          } catch (err) {
+            showToast(err.message || t('somethingWentWrong'), 'error');
+          }
+        }}
+        onDocumentSubmit={async (documentUrl, documentName, documentText) => {
+          try {
+            await sendMessage(currentUser.name, partner, documentText || '', null, documentUrl, documentName);
           } catch (err) {
             showToast(err.message || t('somethingWentWrong'), 'error');
           }
         }}
         placeholder={t('messageWithName', { name: partner })} 
       />
+      <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
     </motion.div>
   );
 }

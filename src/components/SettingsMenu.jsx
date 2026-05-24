@@ -13,11 +13,47 @@ export default function SettingsMenu({
   isOwner,
   ownerNotifPrefs,
   setOwnerNotifPrefs,
+  currentUser,
 }) {
   const [open, setOpen] = useState(false);
   const [showLang, setShowLang] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugInfo, setDebugInfo] = useState({ id: 'Checking...', status: 'Unknown', name: '...' });
   const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (open) {
+      const checkOS = async () => {
+        try {
+          const os = window.plugins?.OneSignal || window.OneSignal;
+          if (!os) {
+            setDebugInfo(prev => ({ ...prev, status: 'Not Found' }));
+            return;
+          }
+          
+          let subId = 'No ID';
+          if (os.User?.pushSubscription?.id) {
+            subId = os.User.pushSubscription.id;
+          } else if (os.getUserId) {
+            subId = await new Promise(r => os.getUserId(r)) || 'Pending';
+          }
+          
+          setDebugInfo({
+            id: subId,
+            status: 'Initialized',
+            name: currentUser?.name?.toLowerCase().trim() || '...',
+            role: isOwner ? 'owner' : 'worker'
+          });
+        } catch (e) {
+          setDebugInfo(prev => ({ ...prev, status: 'Error' }));
+        }
+      };
+      checkOS();
+      const int = setInterval(checkOS, 5000);
+      return () => clearInterval(int);
+    }
+  }, [open, currentUser, isOwner]);
 
   useEffect(() => {
     const handleClick = (e) => {
@@ -251,6 +287,8 @@ export default function SettingsMenu({
                 </AnimatePresence>
               </>
             )}
+
+
 
             <div style={{ height: '1px', background: 'var(--surface-high)', margin: '4px 0' }} />
 

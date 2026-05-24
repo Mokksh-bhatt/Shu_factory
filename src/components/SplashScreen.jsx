@@ -2,20 +2,21 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppContext } from '../context/AppContext';
 
-export default function SplashScreen({ onFinish, isReady = true }) {
+export default function SplashScreen({ onFinish, isReady = true, isReturningUser = false }) {
   const [fadeOut, setFadeOut] = useState(false);
   const [minTimePassed, setMinTimePassed] = useState(false);
   const { t } = useAppContext();
 
   useEffect(() => {
-    const timer = setTimeout(() => setMinTimePassed(true), 1200);
+    const minTime = isReturningUser ? 400 : 800;
+    const timer = setTimeout(() => setMinTimePassed(true), minTime);
     return () => clearTimeout(timer);
-  }, []);
+  }, [isReturningUser]);
 
   useEffect(() => {
     if (minTimePassed && isReady) {
       setFadeOut(true);
-      const end = setTimeout(() => onFinish(), 600);
+      const end = setTimeout(() => onFinish(), 250);
       return () => clearTimeout(end);
     }
   }, [minTimePassed, isReady, onFinish]);
@@ -27,7 +28,7 @@ export default function SplashScreen({ onFinish, isReady = true }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.6, ease: 'easeOut' }}
+          transition={{ duration: 0.25, ease: 'easeOut' }}
           style={{
             position: 'fixed', inset: 0, zIndex: 9999,
             background: 'linear-gradient(160deg, #0a2e14 0%, #0f0f11 40%, #0f0f11 60%, #1a0a02 100%)',
@@ -39,11 +40,11 @@ export default function SplashScreen({ onFinish, isReady = true }) {
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.5, ease: 'easeOut' }}
-            src="/images.jpg" 
-            alt={t('appName')} 
+            src="/logo.jpg"
+            alt={t('appName')}
             style={{
-              width: '200px', height: 'auto',
-              borderRadius: '16px',
+              width: '260px', height: 'auto',
+              borderRadius: '12px',
               marginBottom: '24px',
             }}
           />

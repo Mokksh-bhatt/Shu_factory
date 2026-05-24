@@ -1,0 +1,45 @@
+diff --git a/node_modules/cordova-plugin-background-mode/src/android/BackgroundModeExt.java b/node_modules/cordova-plugin-background-mode/src/android/BackgroundModeExt.java
+index ed76598..c533efd 100644
+--- a/node_modules/cordova-plugin-background-mode/src/android/BackgroundModeExt.java
++++ b/node_modules/cordova-plugin-background-mode/src/android/BackgroundModeExt.java
+@@ -90,6 +90,9 @@ public class BackgroundModeExt extends CordovaPlugin {
+             case "battery":
+                 disableBatteryOptimizations();
+                 break;
++            case "checkBattery":
++                checkBatteryOptimizations(callback);
++                return true;
+             case "webview":
+                 disableWebViewOptimizations();
+                 break;
+@@ -185,6 +188,17 @@ public class BackgroundModeExt extends CordovaPlugin {
+         thread.start();
+     }
+ 
++    /**
++     * Returns true if battery optimizations are already disabled for this app.
++     */
++    private void checkBatteryOptimizations(CallbackContext callback) {
++        if (SDK_INT < M) { callback.success(1); return; }
++        String pkgName  = cordova.getActivity().getPackageName();
++        PowerManager pm = (PowerManager) getService(POWER_SERVICE);
++        PluginResult res = new PluginResult(Status.OK, pm.isIgnoringBatteryOptimizations(pkgName));
++        callback.sendPluginResult(res);
++    }
++
+     /**
+      * Disables battery optimizations for the app.
+      * Requires permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS to function.
+diff --git a/node_modules/cordova-plugin-background-mode/src/android/ForegroundService.java b/node_modules/cordova-plugin-background-mode/src/android/ForegroundService.java
+index 806c956..eb19e18 100644
+--- a/node_modules/cordova-plugin-background-mode/src/android/ForegroundService.java
++++ b/node_modules/cordova-plugin-background-mode/src/android/ForegroundService.java
+@@ -222,7 +222,7 @@ public class ForegroundService extends Service {
+             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+             PendingIntent contentIntent = PendingIntent.getActivity(
+                     context, NOTIFICATION_ID, intent,
+-                    PendingIntent.FLAG_UPDATE_CURRENT);
++                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+ 
+ 
+             notification.setContentIntent(contentIntent);

@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shon Ceramics - Install Update</title>
+  <!-- Google Fonts Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-color: #080b11;
+      --card-bg: rgba(255, 255, 255, 0.03);
+      --card-border: rgba(255, 255, 255, 0.07);
+      --primary: #10b981; /* Emerald/Green representing success/update */
+      --primary-glow: rgba(16, 185, 129, 0.3);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --accent-blue: #3b82f6;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Vibrant background glow elements */
+    .glow-circle {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(120px);
+      z-index: 1;
+      opacity: 0.4;
+    }
+
+    .glow-1 {
+      top: -10%;
+      left: -10%;
+      width: 50vw;
+      height: 50vw;
+      background: radial-gradient(circle, var(--accent-blue) 0%, transparent 70%);
+    }
+
+    .glow-2 {
+      bottom: -10%;
+      right: -10%;
+      width: 50vw;
+      height: 50vw;
+      background: radial-gradient(circle, var(--primary) 0%, transparent 70%);
+    }
+
+    .container {
+      width: 100%;
+      max-width: 440px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-radius: 32px;
+      padding: 32px 24px;
+      text-align: center;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      z-index: 2;
+      position: relative;
+      animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .logo-container {
+      position: relative;
+      display: inline-block;
+      margin-bottom: 24px;
+    }
+
+    .logo {
+      width: 96px;
+      height: 96px;
+      border-radius: 24px;
+      object-fit: cover;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .logo-container:hover .logo {
+      transform: scale(1.08) rotate(4deg);
+    }
+
+    .logo-glow {
+      position: absolute;
+      inset: -4px;
+      background: linear-gradient(135deg, var(--accent-blue), var(--primary));
+      border-radius: 28px;
+      z-index: -1;
+      filter: blur(8px);
+      opacity: 0.6;
+      animation: pulse 3s infinite ease-in-out;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5; filter: blur(8px); }
+      50% { opacity: 0.8; filter: blur(14px); }
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #ffffff 30%, #a5f3fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+      margin-bottom: 28px;
+      padding: 0 12px;
+    }
+
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 18px 24px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #ffffff;
+      font-size: 1.15rem;
+      font-weight: 700;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 8px 24px var(--primary-glow), inset 0 1px 0 rgba(255,255,255,0.2);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 32px;
+    }
+
+    .download-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 32px rgba(16, 185, 129, 0.5), inset 0 1px 0 rgba(255,255,255,0.3);
+    }
+
+    .download-btn:active {
+      transform: translateY(1px);
+      box-shadow: 0 4px 12px var(--primary-glow);
+    }
+
+    .download-btn svg {
+      margin-right: 10px;
+      width: 24px;
+      height: 24px;
+      transition: transform 0.3s ease;
+    }
+
+    .download-btn:hover svg {
+      transform: translateY(3px);
+    }
+
+    /* Step guide card section */
+    .steps-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 24px;
+      padding: 24px 20px;
+      text-align: left;
+    }
+
+    .steps-card h2 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--text);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .step-item {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+      position: relative;
+    }
+
+    .step-item:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Vertical connector line between step numbers */
+    .step-item:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 16px;
+      top: 36px;
+      bottom: -20px;
+      width: 2px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .step-number {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: var(--text);
+      flex-shrink: 0;
+      font-size: 0.95rem;
+      transition: all 0.3s ease;
+    }
+
+    .step-item:hover .step-number {
+      background: var(--primary-glow);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .step-content {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .step-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 4px;
+    }
+
+    .step-desc {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    .step-highlight {
+      color: #38bdf8;
+      font-weight: 600;
+    }
+
+    .step-warning-highlight {
+      color: #fca5a5;
+      font-weight: 600;
+    }
+
+    .footer {
+      margin-top: 36px;
+      font-size: 0.8rem;
+      color: rgba(255, 255, 255, 0.2);
+      text-align: center;
+      z-index: 2;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Background Ambient Glows -->
+  <div class="glow-circle glow-1"></div>
+  <div class="glow-circle glow-2"></div>
+
+  <div class="container">
+    <div class="logo-container">
+      <div class="logo-glow"></div>
+      <img class="logo" src="/logo.jpg" alt="Shon Ceramics">
+    </div>
+
+    <h1>Shon Ceramics</h1>
+    <p class="subtitle">Get the latest performance updates, secure device-binding, and smooth auto-notifications.</p>
+
+    <!-- Chrome Safe Download Button -->
+    <a href="/update.apk" class="download-btn" id="downloadBtn">
+      <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"></path>
+      </svg>
+      Download & Install Update
+    </a>
+
+    <!-- Visual Walkthrough Step Helper -->
+    <div class="steps-card">
+      <h2>
+        <svg style="width: 18px; height: 18px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        Easy Install Steps
+      </h2>
+
+      <!-- Step 1 -->
+      <div class="step-item">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <div class="step-title">Tap Download Button</div>
+          <div class="step-desc">Tap the green button above to download the <span class="step-highlight">update.apk</span> package.</div>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step-item">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <div class="step-title">If Chrome Warns, Tap "Download anyway"</div>
+          <div class="step-desc">Chrome flags all apps outside the Play Store. Tap <span class="step-warning-highlight">"Download anyway"</span> to proceed.</div>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step-item">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <div class="step-title">Allow Source in Settings (One-Time Setup)</div>
+          <div class="step-desc">If Android says "not allowed to install unknown apps from this source", tap <span class="step-highlight">"Settings"</span> in that popup, turn on <span class="step-highlight">"Allow from this source"</span>, and go back.</div>
+        </div>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="step-item">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <div class="step-title">Tap Install & Launch</div>
+          <div class="step-desc">Tap <span class="step-highlight">"Install"</span> or <span class="step-highlight">"Update"</span>, and your app will launch with the new features!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Shon Ceramics &copy; 2026. Internal Factory App Portal.
+  </div>
+
+</body>
+</html>

@@ -22,7 +22,7 @@ export default function OwnerSettingsView({
   setNotificationsEnabled,
   logout,
   t,
-  initialTab = 'config'
+  initialTab = 'workers'
 }) {
   const showToast = useToast();
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -130,56 +130,36 @@ export default function OwnerSettingsView({
     }
   };
 
-  const [notifDebug, setNotifDebug] = useState('');
-  const testNotification = async () => {
-    const lines = [];
-    try {
-      const cap = window.Capacitor;
-      lines.push(`window.Capacitor: ${cap ? 'YES' : 'NO'}`);
-      if (cap) {
-        lines.push(`isNative: ${cap.isNative}`);
-        lines.push(`platform: ${cap.getPlatform?.() ?? cap.platform ?? '?'}`);
-      }
-
-      lines.push('importing @capacitor/local-notifications...');
-      const { LocalNotifications: LN } = await import('@capacitor/local-notifications');
-      lines.push(`import OK, type: ${typeof LN}`);
-
-      const perm = await LN.requestPermissions();
-      lines.push(`Permission: ${JSON.stringify(perm)}`);
-
-      await LN.createChannel({
-        id: 'shu_alarm_channel', name: 'Factory Alerts',
-        importance: 5, visibility: 1, vibration: true, lights: true, lightColor: '#FF0000',
-      });
-      lines.push('channel OK');
-
-      await LN.schedule({
-        notifications: [{ id: 99998, title: 'Test Alarm', body: 'Notifications work!', channelId: 'shu_alarm_channel', smallIcon: 'ic_launcher' }],
-      });
-      lines.push('schedule() OK — check notification shade!');
-
-      if ('vibrate' in navigator) { navigator.vibrate([600,200,600,200,600]); lines.push('vibrate sent'); }
-    } catch (err) {
-      lines.push(`ERROR: ${err.message}\n${err.stack?.slice(0,300)}`);
-    }
-    setNotifDebug(lines.join('\n'));
-  };
-
   return (
-    <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: '60vh' }}>
 
-        {/* ── Notification test panel ── */}
-        <div className="card" style={{ background: 'var(--background)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <strong style={{ color: 'var(--primary)' }}>🔔 Notification Test</strong>
-          <button className="btn-primary" onClick={testNotification}>Tap to Test Alarm</button>
-          {notifDebug ? (
-            <pre style={{ fontSize: '0.75rem', background: '#111', color: '#0f0', padding: '8px', borderRadius: '8px', whiteSpace: 'pre-wrap', margin: 0 }}>
-              {notifDebug}
-            </pre>
-          ) : null}
-        </div>
+      {/* Tab Header */}
+      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--surface-high)', paddingBottom: '12px' }}>
+        <button
+          onClick={() => setActiveTab('workers')}
+          style={{
+            padding: '8px 16px', borderRadius: '8px', border: 'none',
+            background: activeTab === 'workers' ? 'var(--primary)' : 'transparent',
+            color: activeTab === 'workers' ? 'var(--on-primary)' : 'var(--on-surface-variant)',
+            fontWeight: 'bold', cursor: 'pointer'
+          }}
+        >
+          Workers
+        </button>
+        <button
+          onClick={() => setActiveTab('admins')}
+          style={{
+            padding: '8px 16px', borderRadius: '8px', border: 'none',
+            background: activeTab === 'admins' ? 'var(--primary)' : 'transparent',
+            color: activeTab === 'admins' ? 'var(--on-primary)' : 'var(--on-surface-variant)',
+            fontWeight: 'bold', cursor: 'pointer'
+          }}
+        >
+          Admins
+        </button>
+      </div>
 
+      {activeTab === 'workers' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
             <h3 style={{ margin: 0, color: 'var(--primary)', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -193,7 +173,7 @@ export default function OwnerSettingsView({
             <input value={newWorkerName} onChange={(e) => setNewWorkerName(e.target.value)} placeholder={t('workerName')} />
             <input type="text" value={newWorkerPassword} onChange={(e) => setNewWorkerPassword(e.target.value)} placeholder={t('passwordPin')} />
             <select value={newWorkerDept} onChange={(e) => setNewWorkerDept(e.target.value)}>
-              {departments.map((dept) => (
+              {(departments || []).map((dept) => (
                 <option key={dept} value={dept}>
                   {getDepartmentLabel(dept)}
                 </option>
@@ -218,7 +198,7 @@ export default function OwnerSettingsView({
             )}
           </div>
 
-          {workers.map((worker) => (
+          {(workers || []).map((worker) => (
             <div key={worker.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--background)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -233,12 +213,41 @@ export default function OwnerSettingsView({
                     }}
                   />
                 </div>
-                <button
-                  onClick={() => handleDeleteWorker(worker.id, worker.name)}
-                  style={{ background: 'none', border: 'none', color: 'var(--error)' }}
-                >
-                  <Trash2 size={20} />
-                </button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  {worker.deviceId && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await updateWorker(worker.id, { deviceId: null });
+                          showToast(t('deviceUnlocked', { name: worker.name }), 'success');
+                        } catch (err) {
+                          showToast(err.message, 'error');
+                        }
+                      }}
+                      style={{ padding: '6px 12px', background: 'var(--surface-high)', color: 'var(--on-background)', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer' }}
+                    >
+                      {t('unlockDevice')}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleDeleteWorker(worker.id, worker.name)}
+                    style={{ background: 'none', border: 'none', color: 'var(--error)' }}
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '8px', borderTop: '1px solid var(--surface-high)', paddingTop: '10px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', cursor: 'pointer', color: 'var(--on-surface)' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={worker.hasProductionAccess || false} 
+                    onChange={(e) => updateWorker(worker.id, { hasProductionAccess: e.target.checked })}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+                  />
+                  <strong>Grant Production Log Access</strong>
+                </label>
               </div>
 
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -262,7 +271,7 @@ export default function OwnerSettingsView({
                     onChange={(e) => updateWorker(worker.id, { category: e.target.value })}
                     style={{ width: '100%', padding: '10px', borderRadius: '8px', fontSize: '0.9rem', background: 'var(--surface)', color: 'var(--on-background)', border: '1px solid var(--surface-high)' }}
                   >
-                    {departments.map((dept) => (
+                    {(departments || []).map((dept) => (
                       <option key={dept} value={dept}>
                         {getDepartmentLabel(dept)}
                       </option>
@@ -272,10 +281,13 @@ export default function OwnerSettingsView({
               </div>
             </div>
           ))}
-          {workers.length === 0 && <p style={{ color: 'var(--on-surface-variant)' }}>{t('noWorkersYet')}</p>}
+          {(!workers || workers.length === 0) && <p style={{ color: 'var(--on-surface-variant)' }}>{t('noWorkersYet')}</p>}
+        </div>
+      )}
 
-          {/* ═══════ Admin Account Management ═══════ */}
-          <div style={{ marginTop: '24px', borderTop: '1px solid var(--surface-high)', paddingTop: '20px' }}>
+      {activeTab === 'admins' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
             <h3 style={{ margin: '0 0 4px', color: 'var(--warning, #f59e0b)', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <UserPlus size={20} /> Admin Management
             </h3>
@@ -324,33 +336,30 @@ export default function OwnerSettingsView({
             )}
           </div>
 
-          {/* Existing admins list */}
-          {admins.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {admins.map((admin) => (
-                <div
-                  key={admin.id}
-                  className="card"
-                  style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    background: 'var(--background)', borderLeft: '3px solid var(--warning, #f59e0b)',
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: '600', fontSize: '1rem' }}>{admin.name}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--warning, #f59e0b)' }}>Admin • Owner Access</div>
-                  </div>
-                  <button
-                    onClick={() => setConfirmDeleteAdmin({ id: admin.id, name: admin.name })}
-                    style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer' }}
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-              ))}
+          {(admins || []).map((admin) => (
+            <div
+              key={admin.id}
+              className="card"
+              style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                background: 'var(--background)', borderLeft: '3px solid var(--warning, #f59e0b)',
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: '600', fontSize: '1rem' }}>{admin.name}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--warning, #f59e0b)' }}>Admin • Owner Access</div>
+              </div>
+              <button
+                onClick={() => setConfirmDeleteAdmin({ id: admin.id, name: admin.name })}
+                style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer' }}
+              >
+                <Trash2 size={18} />
+              </button>
             </div>
-          )}
+          ))}
+          {(!admins || admins.length === 0) && <p style={{ color: 'var(--on-surface-variant)', fontSize: '0.85rem' }}>No other admins created.</p>}
         </div>
+      )}
 
       <ConfirmModal
         open={!!confirmDeleteWorker}

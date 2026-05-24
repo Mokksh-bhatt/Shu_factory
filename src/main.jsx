@@ -70,7 +70,11 @@ if ('serviceWorker' in navigator) {
         osc.start(ctx.currentTime + startOffset);
         osc.stop(ctx.currentTime + startOffset + duration);
       };
-      if (mode === 'owner') {
+      if (mode === 'chat') {
+        // High, pleasant dual chime for chat messages
+        playTone(1320, 0, 0.08, 'sine', 0.5);
+        playTone(1760, 0.08, 0.15, 'sine', 0.5);
+      } else if (mode === 'owner') {
         playTone(880,  0,    0.15, 'square',   1.0);
         playTone(1100, 0.18, 0.15, 'sawtooth', 1.0);
         playTone(880,  0.36, 0.15, 'square',   1.0);

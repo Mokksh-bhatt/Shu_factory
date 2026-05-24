@@ -6,6 +6,7 @@
     "rules": "storage.rules"
   },
   "hosting": {
+    "site": "shufactory-cmd-1",
     "public": "dist",
     "headers": [
       {
@@ -39,6 +40,19 @@
           {
             "key": "Cache-Control",
             "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "**/*.apk",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/vnd.android.package-archive"
+          },
+          {
+            "key": "Content-Disposition",
+            "value": "attachment; filename=\"ShonCeramics.apk\""
           }
         ]
       }

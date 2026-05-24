@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Send, X, Play, Square, Image as ImageIcon } from 'lucide-react';
+import { Mic, MicOff, Send, X, Play, Square, Image as ImageIcon, Paperclip, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAppContext } from '../context/AppContext';
 import { useToast } from './Toast';
@@ -8,50 +8,38 @@ import { useToast } from './Toast';
 const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || '';
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || '';
 
-export default function VoiceInput({ onSubmit, placeholder, value, onChange, onAudioSubmit, onImageSubmit }) {
+export default function VoiceInput({ onSubmit, placeholder, value, onChange, onAudioSubmit, onImageSubmit, onDocumentSubmit }) {
   const [text, setText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
   const [uploading, setUploading] = useState(false);
+  
+  // Staged files for combined text+media submission
+  const [stagedFile, setStagedFile] = useState(null);
+  const [stagedFileType, setStagedFileType] = useState(null); // 'image' or 'document'
+  const [stagedFileName, setStagedFileName] = useState('');
+  
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
   const { t } = useAppContext();
   const showToast = useToast();
   const fileInputRef = useRef(null);
+  const docInputRef = useRef(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const menuRef = useRef(null);
 
-  const handleImageSelect = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
-    try {
-      const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
-      const { storage } = await import('../firebase');
-      
-      const fileExt = file.name.split('.').pop();
-      const fileName = `images/${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
-      const storageRef = ref(storage, fileName);
-      
-      await uploadBytes(storageRef, file);
-      const downloadUrl = await getDownloadURL(storageRef);
-      
-      if (onImageSubmit) {
-        await onImageSubmit(downloadUrl);
-        showToast('Image attached', 'success');
-      } else {
-        showToast('Image attachment not supported here', 'warning');
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setShowAttachMenu(false);
       }
-    } catch (err) {
-      console.error('Image upload error:', err);
-      showToast('Failed to upload image', 'error');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const controlled = typeof value === 'string' && typeof onChange === 'function';
   const inputValue = controlled ? value : text;
@@ -62,6 +50,31 @@ export default function VoiceInput({ onSubmit, placeholder, value, onChange, onA
     } else {
       setText(next);
     }
+  };
+
+  const handleFileSelect = (e, type) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (type === 'image' && !file.type.startsWith('image/')) {
+      showToast('Please select an image file', 'warning');
+      return;
+    }
+
+    setStagedFile(file);
+    setStagedFileType(type);
+    setStagedFileName(file.name);
+    setShowAttachMenu(false);
+    
+    // reset inputs
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (docInputRef.current) docInputRef.current.value = '';
+  };
+
+  const cancelStagedFile = () => {
+    setStagedFile(null);
+    setStagedFileType(null);
+    setStagedFileName('');
   };
 
   // Clean up audio URL on unmount
@@ -101,6 +114,9 @@ export default function VoiceInput({ onSubmit, placeholder, value, onChange, onA
       setRecordingDuration(0);
       setAudioBlob(null);
       setAudioUrl(null);
+      
+      // cancel any staged file if we start recording
+      cancelStagedFile();
 
       timerRef.current = setInterval(() => {
         setRecordingDuration(prev => prev + 1);
@@ -140,11 +156,10 @@ export default function VoiceInput({ onSubmit, placeholder, value, onChange, onA
 
     setUploading(true);
     try {
-      // Upload to Cloudinary (free, no SDK needed)
       const formData = new FormData();
       formData.append('file', audioBlob, `voice_${Date.now()}.webm`);
       formData.append('upload_preset', UPLOAD_PRESET);
-      formData.append('resource_type', 'video'); // Cloudinary treats audio as video
+      formData.append('resource_type', 'video');
 
       const res = await fetch(
         `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`,
@@ -159,14 +174,12 @@ export default function VoiceInput({ onSubmit, placeholder, value, onChange, onA
       const data = await res.json();
       const downloadUrl = data.secure_url;
 
-      // If parent supports audio, send as audio; otherwise fallback to text
       if (onAudioSubmit) {
         onAudioSubmit(downloadUrl, recordingDuration);
       } else {
         onSubmit(`🎙️ Voice Note (${formatDuration(recordingDuration)})`);
       }
 
-      // Clean up
       setAudioBlob(null);
       if (audioUrl) URL.revokeObjectURL(audioUrl);
       setAudioUrl(null);
@@ -185,13 +198,69 @@ export default function VoiceInput({ onSubmit, placeholder, value, onChange, onA
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const handleSubmit = () => {
-    if (inputValue.trim()) {
-      onSubmit(inputValue.trim());
-      // Only clear text in uncontrolled mode — in controlled mode the parent manages it
-      if (!controlled) {
-        updateText('');
+  const handleSubmit = async () => {
+    const hasText = !!inputValue.trim();
+    if (!hasText && !stagedFile) return;
+
+    if (stagedFile) {
+      setUploading(true);
+      try {
+        if (!CLOUD_NAME || !UPLOAD_PRESET) {
+          throw new Error('Cloudinary not configured in environment variables');
+        }
+
+        const formData = new FormData();
+        formData.append('file', stagedFile);
+        formData.append('upload_preset', UPLOAD_PRESET);
+        const resourceType = stagedFileType === 'document' ? 'raw' : 'auto';
+        formData.append('resource_type', resourceType);
+
+        const res = await fetch(
+          `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`,
+          { method: 'POST', body: formData }
+        );
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => null);
+          throw new Error(errData?.error?.message || `Upload failed (${res.status})`);
+        }
+
+        const data = await res.json();
+        const fileUrl = data.secure_url;
+
+        // Pass everything required: text + the file url. We use the existing callbacks but pass text!
+        // Wait, the parent components only have onSubmit, onImageSubmit, onDocumentSubmit.
+        // If we want them to accept text, we should update the parent. But wait! The easiest way is to let onSubmit accept multiple parameters!
+        // OR we can just check if onImageSubmit exists. If it does, we call it. If there is text, how do we send it?
+        // Actually, let's call `onSubmit(text, null, imageUrl, documentUrl, documentName)` if the parent supports it.
+        // We will call the standard callbacks with the text appended, but since we are modifying parents, let's pass it cleanly.
+        
+        // Let's pass the text via the callback directly so parent can decide.
+        // Actually, we've updated the parents to expect: onImageSubmit(url, text), onDocumentSubmit(url, name, text).
+        // Let's modify the calls here.
+        if (stagedFileType === 'image' && onImageSubmit) {
+          await onImageSubmit(fileUrl, inputValue.trim());
+        } else if (stagedFileType === 'document' && onDocumentSubmit) {
+          await onDocumentSubmit(fileUrl, stagedFileName, inputValue.trim());
+        } else {
+          // fallback if parent doesn't support file
+          onSubmit(inputValue.trim() + `\n\n[Attached: ${stagedFileName}]`);
+        }
+        
+      } catch (err) {
+        console.error('File upload error:', err);
+        showToast('Failed to upload file. Please try again.', 'error');
+        setUploading(false);
+        return; // Don't clear text if upload failed
       }
+      setUploading(false);
+      cancelStagedFile();
+    } else {
+      onSubmit(inputValue.trim());
+    }
+
+    if (!controlled) {
+      updateText('');
     }
   };
 
@@ -287,39 +356,105 @@ export default function VoiceInput({ onSubmit, placeholder, value, onChange, onA
         background: 'var(--surface)', borderRadius: '16px', padding: '12px',
       }}
     >
+      {/* Staged File Preview */}
+      {stagedFile && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'var(--surface-high)', borderRadius: '8px' }}>
+          {stagedFileType === 'image' ? <ImageIcon size={18} /> : <FileText size={18} />}
+          <span style={{ flex: 1, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {stagedFileName}
+          </span>
+          <button onClick={cancelStagedFile} style={{ background: 'transparent', border: 'none', color: 'var(--on-surface-variant)', cursor: 'pointer', padding: '4px' }}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
         <input
           type="file"
           accept="image/*"
           style={{ display: 'none' }}
           ref={fileInputRef}
-          onChange={handleImageSelect}
+          onChange={(e) => handleFileSelect(e, 'image')}
         />
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          style={{
-            width: '48px', height: '48px', minWidth: '48px', borderRadius: '50%',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'var(--surface-high)',
-            color: 'white', border: 'none',
-            opacity: uploading ? 0.5 : 1,
-          }}
-        >
-          <ImageIcon size={22} />
-        </motion.button>
+        <input
+          type="file"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.txt"
+          style={{ display: 'none' }}
+          ref={docInputRef}
+          onChange={(e) => handleFileSelect(e, 'document')}
+        />
+
+        <div style={{ position: 'relative' }} ref={menuRef}>
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={() => setShowAttachMenu(!showAttachMenu)}
+            disabled={uploading}
+            style={{
+              width: '48px', height: '48px', minWidth: '48px', borderRadius: '50%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'var(--surface-high)',
+              color: 'white', border: 'none',
+              opacity: uploading ? 0.5 : 1,
+            }}
+          >
+            <Paperclip size={22} />
+          </motion.button>
+          
+          {showAttachMenu && (
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              style={{
+                position: 'absolute',
+                bottom: '110%',
+                left: '0',
+                background: 'var(--surface-high)',
+                borderRadius: '12px',
+                padding: '8px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                zIndex: 100
+              }}
+            >
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  background: 'transparent', border: 'none', color: 'var(--on-surface)',
+                  padding: '8px 12px', borderRadius: '8px', cursor: 'pointer',
+                  width: '100%', textAlign: 'left', whiteSpace: 'nowrap'
+                }}
+              >
+                <ImageIcon size={18} /> Image
+              </button>
+              <button
+                onClick={() => docInputRef.current?.click()}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  background: 'transparent', border: 'none', color: 'var(--on-surface)',
+                  padding: '8px 12px', borderRadius: '8px', cursor: 'pointer',
+                  width: '100%', textAlign: 'left', whiteSpace: 'nowrap'
+                }}
+              >
+                <FileText size={18} /> Document
+              </button>
+            </motion.div>
+          )}
+        </div>
 
         <motion.button
           whileTap={{ scale: 0.9 }}
           onClick={startRecording}
-          disabled={uploading}
+          disabled={uploading || stagedFile}
           style={{
             width: '48px', height: '48px', minWidth: '48px', borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'var(--surface-high)',
             color: 'white', border: 'none',
-            opacity: uploading ? 0.5 : 1,
+            opacity: uploading || stagedFile ? 0.5 : 1,
           }}
         >
           <Mic size={22} />
@@ -335,15 +470,15 @@ export default function VoiceInput({ onSubmit, placeholder, value, onChange, onA
         />
 
         <motion.button
-          whileTap={{ scale: 0.9, opacity: inputValue.trim() ? 1 : 0.5 }}
+          whileTap={{ scale: 0.9, opacity: (inputValue.trim() || stagedFile) ? 1 : 0.5 }}
           onClick={handleSubmit}
-          disabled={!inputValue.trim() || uploading}
+          disabled={(!inputValue.trim() && !stagedFile) || uploading}
           style={{
             width: '48px', height: '48px', minWidth: '48px', borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: inputValue.trim() ? 'var(--primary)' : 'var(--surface-high)',
+            background: (inputValue.trim() || stagedFile) ? 'var(--primary)' : 'var(--surface-high)',
             color: 'white', border: 'none',
-            opacity: inputValue.trim() ? 1 : 0.5,
+            opacity: (inputValue.trim() || stagedFile) ? 1 : 0.5,
           }}
         >
           <Send size={20} />

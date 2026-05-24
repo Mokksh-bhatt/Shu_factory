@@ -35,5 +35,28 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if signedIn();
     }
+
+    match /config/{document} {
+      allow read: if true;
+    }
+
+    match /production_raw_materials/{docId} {
+      allow read, write: if signedIn();
+    }
+    match /production_colours/{docId} {
+      allow read, write: if signedIn();
+    }
+    match /production_sizes/{docId} {
+      allow read, write: if signedIn();
+    }
+    match /production_measurements/{docId} {
+      allow read, write: if signedIn();
+    }
+    match /production_suppliers/{docId} {
+      allow read, write: if signedIn();
+    }
+    match /dailyProductions/{docId} {
+      allow read, write: if signedIn();
+    }
   }
 }

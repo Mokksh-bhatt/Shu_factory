@@ -19,6 +19,10 @@ import {
 } from 'firebase/firestore';
 import { DEFAULT_LANGUAGE, LANGUAGE_OPTIONS, translate } from '../i18n';
 import { isStrongEnoughPassword, isValidWorkerName } from '../utils/security';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+const ShuHelper = registerPlugin('ShuHelper');
+
+export const APP_VERSION_CODE = 3;
 
 const AppContext = createContext();
 export const useAppContext = () => useContext(AppContext);
@@ -27,6 +31,8 @@ const USER_STORAGE_KEY = 'shu_user';
 const MAX_TEXT_LENGTH = 500;
 const OWNER_EMAIL = (import.meta.env.VITE_OWNER_EMAIL || '').trim().toLowerCase();
 const REQUIRE_OWNER_CLAIM = import.meta.env.VITE_REQUIRE_OWNER_CLAIM === 'true';
+// The display name of the primary/hardcoded owner — always visible in the worker chat list
+const MAIN_OWNER_NAME = (import.meta.env.VITE_OWNER_NAME || 'Himanshu').trim();
 
 const DEPARTMENTS = ['General', 'Accounts', 'Plant Supervisor', 'Packing Supervisor', 'Maintenance', 'HR', 'Key Person'];
 
@@ -75,8 +81,13 @@ export const AppProvider = ({ children }) => {
   });
   const [authReady, setAuthReady] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
-    return localStorage.getItem('shu_notifications') === 'true';
+    return localStorage.getItem('shu_notifications') !== 'false';
   });
+  const [notifPermissionDenied, setNotifPermissionDenied] = useState(false);
+  // Show once on native until worker confirms they enabled battery + autostart + overlay
+  const [showGodModeModal, setShowGodModeModal] = useState(() =>
+    Capacitor.isNativePlatform() && !!currentUser && localStorage.getItem('shu_god_mode_v2') !== 'true'
+  );
   const [unreadCount, setUnreadCount] = useState(0);
   const [lastReadTimestamp, setLastReadTimestamp] = useState(() => {
     const stored = localStorage.getItem('shu_last_read_ts');
@@ -89,6 +100,15 @@ export const AppProvider = ({ children }) => {
   const [tasks, setTasks] = useState([]);
   const [messages, setMessages] = useState([]);
   const [overdueReminders, setOverdueReminders] = useState([]);
+  const [updateAvailable, setUpdateAvailable] = useState(null);
+
+  // God Mode setup tracking
+  const [cordovaReady, setCordovaReady] = useState(false);
+  const [manufacturer, setManufacturer] = useState('');
+  const [batteryOk, setBatteryOk] = useState(false);
+  const [overlayOk, setOverlayOk] = useState(false);
+  const [autoStartTapped, setAutoStartTapped] = useState(() => localStorage.getItem('shu_autostart_tapped') === 'true');
+  const [pauseAppTapped, setPauseAppTapped] = useState(() => localStorage.getItem('shu_pause_app_tapped') === 'true');
 
   // Owner notification preferences
   const [ownerNotifPrefs, setOwnerNotifPrefsState] = useState(() => {
@@ -117,7 +137,7 @@ export const AppProvider = ({ children }) => {
     try {
       await signInAnonymously(auth);
     } catch (err) {
-      console.error('Anonymous login failed, attempting fallback:', err);
+      console.warn('Anonymous login disabled in Firebase, falling back to dedicated service account...');
       try {
         await signInWithEmailAndPassword(auth, 'worker@shonceramics.com', 'worker123456');
       } catch (fallbackErr) {
@@ -136,9 +156,10 @@ export const AppProvider = ({ children }) => {
     let active = true;
     const run = async () => {
       try {
-        if (currentUser?.role !== 'owner') {
-          await ensureWorkerAuth();
-        }
+        // Always call ensureWorkerAuth — idempotent if already signed in.
+        // Without this, Firestore listeners start before Firebase restores the
+        // anonymous auth session from cache (owner cold-start race condition).
+        await ensureWorkerAuth();
       } catch (err) {
         console.error('Auth initialization error:', err);
       } finally {
@@ -147,7 +168,7 @@ export const AppProvider = ({ children }) => {
     };
     run();
     return () => { active = false; };
-  }, [currentUser?.role, ensureWorkerAuth]);
+  }, [ensureWorkerAuth]);
 
   useEffect(() => {
     if (currentUser) {
@@ -161,9 +182,169 @@ export const AppProvider = ({ children }) => {
     localStorage.setItem('shu_notifications', String(notificationsEnabled));
   }, [notificationsEnabled]);
 
-  // OneSignal: opt-in and tag user when notifications enabled
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'config', 'appSettings'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (Number(data.minVersionCode) > APP_VERSION_CODE && data.apkUrl) {
+          setUpdateAvailable({ version: data.latestVersionName || 'New Update', apkUrl: data.apkUrl });
+        } else {
+          setUpdateAvailable(null);
+        }
+      } else {
+        setUpdateAvailable(null);
+      }
+    }, (err) => console.error('Update config error:', err));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (Capacitor.isNativePlatform() && currentUser && localStorage.getItem('shu_god_mode_v2') !== 'true') {
+      setShowGodModeModal(true);
+    }
+  }, [currentUser]);
+
+  // Background mode: keep app alive forever, override back button
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const enable = () => {
+      if (window.cordova && cordova.plugins && cordova.plugins.backgroundMode) {
+        cordova.plugins.backgroundMode.enable();
+        cordova.plugins.backgroundMode.overrideBackButton();
+        cordova.plugins.backgroundMode.setDefaults({
+          title: 'Factory System Active',
+          text: 'Waiting for tasks...',
+          resume: true,
+          hidden: false,
+        });
+      }
+    };
+    document.addEventListener('deviceready', enable, { once: true });
+    // Also try immediately in case deviceready already fired
+    enable();
+  }, []);
+
+  // Deviceready + battery + overlay check: populates manufacturer, checks battery exemption on start and on resume
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const checkBatteryAndOverlay = async () => {
+      try {
+        const result = await ShuHelper.checkPermissions();
+        setBatteryOk(!!result.batteryOk);
+        setOverlayOk(!!result.overlayOk);
+      } catch (err) {
+        console.warn('ShuHelper check failed, falling back to legacy cordova check');
+        if (window.cordova) {
+          window.cordova.exec((r) => setBatteryOk(!!r), () => {}, 'BackgroundModeExt', 'checkBattery', []);
+          window.cordova.exec((r) => setOverlayOk(!!r), () => {}, 'BackgroundModeExt', 'checkOverlay', []);
+        }
+      }
+    };
+    const onReady = () => {
+      setCordovaReady(true);
+      setManufacturer((window.device?.manufacturer || '').toLowerCase());
+      checkBatteryAndOverlay();
+    };
+    document.addEventListener('deviceready', onReady, { once: true });
+    // deviceready fires before React mounts in Capacitor — catch it if already fired
+    if (window.cordova && window.device) onReady();
+    document.addEventListener('resume', checkBatteryAndOverlay);
+    return () => document.removeEventListener('resume', checkBatteryAndOverlay);
+  }, []);
+
+  // Native OneSignal boot: initialize + request permission + detect denial
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const init = async () => {
+      try {
+        const getNativeOneSignal = () => {
+          return new Promise((resolve) => {
+            let attempts = 0;
+            const check = () => {
+              const os = window.plugins?.OneSignal;
+              if (os) {
+                resolve(os);
+              } else if (attempts < 15) {
+                attempts++;
+                setTimeout(check, 1000);
+              } else {
+                resolve(null);
+              }
+            };
+            check();
+          });
+        };
+
+        const OneSignal = await getNativeOneSignal();
+        if (!OneSignal) {
+          throw new Error('window.plugins.OneSignal is undefined after 15s');
+        }
+        
+        OneSignal.initialize('3ca07406-7594-42ef-ade4-39b98a4ef565');
+        const granted = await OneSignal.Notifications.requestPermission(true);
+        if (!granted) setNotifPermissionDenied(true);
+      } catch (err) {
+        console.warn('[OneSignal][native] init failed:', err);
+      }
+    };
+    init();
+  }, []);
+
+  // Native OneSignal login — sets external_id so pushes reach this device by workerName (standardized lowercase/trimmed)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || !currentUser?.name) return;
+    const login = async () => {
+      try {
+        const getNativeOneSignal = () => {
+          return new Promise((resolve) => {
+            let attempts = 0;
+            const check = () => {
+              const os = window.plugins?.OneSignal;
+              if (os) {
+                resolve(os);
+              } else if (attempts < 15) {
+                attempts++;
+                setTimeout(check, 1000);
+              } else {
+                resolve(null);
+              }
+            };
+            check();
+          });
+        };
+
+        const OneSignal = await getNativeOneSignal();
+        if (OneSignal) {
+          const externalId = currentUser.name.toLowerCase().trim();
+          // Logout first to clear any stale/duplicate subscriptions from previous sessions
+          try { await OneSignal.logout(); } catch {}
+          await OneSignal.login(externalId);
+
+          const subId = OneSignal.User?.pushSubscription?.id;
+          const optedIn = OneSignal.User?.pushSubscription?.optedIn;
+          console.log(`[OneSignal] login OK | id=${externalId} | subscriptionId=${subId} | optedIn=${optedIn}`);
+
+          try {
+            if (OneSignal.User?.addTags) {
+              await OneSignal.User.addTags({ role: currentUser.role || 'worker', name: externalId });
+            }
+          } catch (tagErr) {
+            console.warn('[OneSignal] tag sync failed:', tagErr);
+          }
+        } else {
+          console.warn('[OneSignal] SDK not found after 15s — push will not work');
+        }
+      } catch (err) {
+        console.warn('[OneSignal][native] login failed:', err);
+      }
+    };
+    login();
+  }, [currentUser?.name, currentUser?.role]);
+
+  // OneSignal: web SDK opt-in (skipped on native — handled by the boot sequence above)
   useEffect(() => {
     if (!notificationsEnabled || !currentUser) return;
+    if (Capacitor.isNativePlatform()) return;
 
     let cancelled = false;
 
@@ -203,11 +384,12 @@ export const AppProvider = ({ children }) => {
           console.log('[OneSignal] Permission requested');
         }
 
-        // Tag the user so we can target pushes by name
-        await OneSignal.login(currentUser.name || currentUser.id || 'anonymous');
+        // Tag the user so we can target pushes by name (standardized lowercase/trimmed)
+        const nameKey = (currentUser.name || currentUser.id || 'anonymous').toLowerCase().trim();
+        await OneSignal.login(nameKey);
         await OneSignal.User.addTags({
           role: currentUser.role || 'worker',
-          name: currentUser.name || '',
+          name: nameKey,
         });
 
         // Check subscription status
@@ -237,12 +419,32 @@ export const AppProvider = ({ children }) => {
       setUnreadCount(0);
       return;
     }
+    const cleanMe = currentUser.name?.toLowerCase().trim();
+    if (!cleanMe) {
+      setUnreadCount(0);
+      return;
+    }
     const count = messages.filter(msg => {
       const ts = msg.createdAt?.toMillis ? msg.createdAt.toMillis() : (msg.createdAt instanceof Date ? msg.createdAt.getTime() : 0);
       if (ts <= lastReadTimestamp) return false;
-      if (msg.target === currentUser.name) return true;
-      if (currentUser.role === 'owner' && msg.target === 'owner') return true;
-      if (msg.target === 'GLOBAL' && msg.sender !== currentUser.name) return true;
+
+      const cleanSender = msg.sender?.toLowerCase().trim();
+      const cleanTarget = msg.target?.toLowerCase().trim();
+
+      // Don't count our own messages
+      if (cleanSender === cleanMe) return false;
+
+      // Direct DM
+      if (cleanTarget === cleanMe) return true;
+
+      // Legacy role-based targets — only main owner sees legacy 'owner'-addressed messages
+      const isMainOwner = cleanMe === MAIN_OWNER_NAME.toLowerCase().trim();
+      if (currentUser.role === 'owner' && isMainOwner && (cleanTarget === 'owner' || cleanTarget === 'admin@shonceramics.com')) return true;
+      if (currentUser.role === 'worker' && cleanTarget === 'worker') return true;
+
+      // Global messages not sent by us
+      if (msg.target === 'GLOBAL') return true;
+
       return false;
     }).length;
     setUnreadCount(count);
@@ -261,22 +463,32 @@ export const AppProvider = ({ children }) => {
   useEffect(() => {
     import('@capacitor/local-notifications').then(({ LocalNotifications: LN }) => {
       LN.requestPermissions().catch(() => {});
+      // Delete old channel so Android picks up the new visibility=0 setting
+      LN.deleteChannel({ id: 'shu_alarm_channel_v4' }).catch(() => {});
       LN.createChannel({
-        id: 'shu_alarm_channel', name: 'Factory Alerts',
-        importance: 5, visibility: 1, vibration: true, lights: true, lightColor: '#FF0000',
+        id: 'shu_alarm_channel_v4', name: 'Factory Alerts',
+        importance: 4, visibility: 0, vibration: true, lights: true, lightColor: '#FF0000',
+      }).catch(() => {});
+      LN.createChannel({
+        id: 'shu_chat_channel', name: 'Factory Chat',
+        importance: 4, visibility: 0, vibration: true, lights: true, lightColor: '#00FF00',
       }).catch(() => {});
     }).catch(() => {});
   }, []);
 
   // Fire a loud native notification via the alarm channel
-  const fireNativeAlarm = useCallback(async (title, body) => {
+  const fireNativeAlarm = useCallback(async (title, body, channelId = 'shu_alarm_channel_v4') => {
     try {
       const { LocalNotifications: LN } = await import('@capacitor/local-notifications');
       const id = Math.floor(Math.random() * 2_000_000_000) + 1;
       await LN.schedule({
-        notifications: [{ id, title, body, channelId: 'shu_alarm_channel', smallIcon: 'ic_launcher', iconColor: '#028a3f' }],
+        notifications: [{ id, title, body, channelId, smallIcon: 'ic_launcher', iconColor: '#028a3f' }],
       });
-      if ('vibrate' in navigator) navigator.vibrate([600, 200, 600, 200, 600, 200, 1000, 400, 600]);
+      if (channelId === 'shu_alarm_channel_v4') {
+        if ('vibrate' in navigator) navigator.vibrate([600, 200, 600, 200, 600, 200, 1000, 400, 600]);
+      } else {
+        if ('vibrate' in navigator) navigator.vibrate([300, 100, 300]);
+      }
     } catch (err) {
       console.warn('[LocalNotif] failed:', err);
     }
@@ -288,6 +500,7 @@ export const AppProvider = ({ children }) => {
       window.__playAlarmSW(mode);
       return;
     }
+    if (mode === 'MUTE') return; // Just in case
     try {
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
@@ -312,7 +525,11 @@ export const AppProvider = ({ children }) => {
         osc.start(ctx.currentTime + startOffset);
         osc.stop(ctx.currentTime + startOffset + duration);
       };
-      if (mode === 'owner') {
+      if (mode === 'chat') {
+        // High, pleasant dual chime for chat messages
+        playTone(1320, 0, 0.08, 'sine', 0.5);
+        playTone(1760, 0.08, 0.15, 'sine', 0.5);
+      } else if (mode === 'owner') {
         // Loud multi-burst alert for owner
         playTone(880, 0, 0.15, 'square', 1.0);
         playTone(1100, 0.18, 0.15, 'sawtooth', 1.0);
@@ -354,45 +571,63 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
-  // OneSignal: send a push notification to a specific user by their name tag
+  // OneSignal: send a push notification to a specific user by external_id (set by OneSignal.login())
   const sendOneSignalPush = useCallback(async (targetName, title, body, data = {}) => {
     try {
+      const notificationType = data.type || 'task';
       const payload = {
         app_id: '3ca07406-7594-42ef-ade4-39b98a4ef565',
         headings: { en: title },
         contents: { en: body },
-        priority: 10,             // FCM high priority — wakes screen
+        priority: 10,
         ttl: 86400,
-        require_interaction: true, // Web push: stays until tapped (Chrome desktop/Android)
-        android_visibility: 1,     // Show on lock screen
-        android_led_color: 'FFFF0000', // Red LED flash
-        // Tell Android to use the high-importance alarm channel
-        // (create this channel once in OneSignal dashboard: Importance = Urgent/High)
-        android_channel_id: 'shu_alarm_channel',
-        web_push_topic: 'shu-alarm',
-        ...(data.url ? { url: data.url } : {}),
+        android_visibility: 0,
+        android_led_color: notificationType === 'chat' ? 'FF00FF00' : 'FFFF0000',
+        data: {
+          type: notificationType,
+          ...data,
+        },
       };
-      // Target by name or role
+
+      const cleanTarget = targetName ? targetName.toLowerCase().trim() : null;
+
       if (data.targetRole) {
+        // Role broadcast — reach all devices with this role tag
         payload.filters = [{ field: 'tag', key: 'role', relation: '=', value: data.targetRole }];
-      } else if (targetName) {
-        payload.filters = [{ field: 'tag', key: 'name', relation: '=', value: targetName }];
+        if (cleanTarget) {
+          payload.filters.push({ operator: 'OR' });
+          payload.filters.push({ field: 'tag', key: 'name', relation: '=', value: cleanTarget });
+        }
+      } else if (cleanTarget) {
+        // Specific user — target by external_id (set by OneSignal.login(name))
+        // This is more reliable than tag filters which can fail to sync
+        payload.include_external_user_ids = [cleanTarget];
+        payload.channel_for_external_user_ids = 'push';
       } else {
-        return; // no target
+        return;
       }
-      const resp = await fetch('https://onesignal.com/api/v1/notifications', {
+
+      // Use Cloudflare Worker proxy to avoid browser CORS block on OneSignal API.
+      // Falls back to direct OneSignal call on native (Android WebView has no CORS restriction).
+      const notifyUrl = import.meta.env.VITE_NOTIFY_URL || 'https://onesignal.com/api/v1/notifications';
+      const isProxy = notifyUrl !== 'https://onesignal.com/api/v1/notifications';
+      const headers = isProxy
+        ? { 'Content-Type': 'application/json' }
+        : { 'Content-Type': 'application/json', 'Authorization': 'Key os_v2_app_hsqhibtvsrbo7lpehg4yutxvmudaalv5ns6urpufuqqj66cvrlism7hq7fbb6fci5vglro6foamj2t3mna33ojufqdgodrtsyhcax5i' };
+      if (!isProxy) payload.app_id = '3ca07406-7594-42ef-ade4-39b98a4ef565';
+      const resp = await fetch(notifyUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Key os_v2_app_hsqhibtvsrbo7lpehg4yutxvmvvc7nj66enu4wufjemxpegyfr2rncliwfuqiv5mi66uehjenaej564zqj5b4han7t5537ddi27ug4q' },
+        headers,
         body: JSON.stringify(payload),
       });
       const result = await resp.json().catch(() => null);
-      if (!resp.ok || (result && result.errors)) {
-        console.warn('OneSignal push response:', resp.status, result);
+      if (!resp.ok || result?.errors) {
+        console.warn('[OneSignal] push failed:', resp.status, JSON.stringify(result));
       } else {
-        console.log('OneSignal push sent OK:', result?.id, 'recipients:', result?.recipients);
+        console.log('[OneSignal] push sent:', result?.id, '→ recipients:', result?.recipients);
       }
     } catch (err) {
-      console.warn('OneSignal push error:', err);
+      console.warn('[OneSignal] push error:', err);
     }
   }, []);
 
@@ -426,15 +661,18 @@ export const AppProvider = ({ children }) => {
         // Task notification logic — play sound + show SW notification (works in background)
         if (currentUser?.role === 'worker' && notificationsEnabled) {
           const prevIds = new Set(prevTasksRef.current.map(t => t.id));
-          const incoming = newTasks.filter(t => !prevIds.has(t.id) && t.status === 'PENDING' && t.workerName?.toLowerCase() === currentUser.name?.toLowerCase());
-          if (incoming.length > 0) {
-            playLoudNotification('worker');
-            const first = incoming[0];
-            const taskTitle = `📋 New Task Assigned`;
-            const taskBody = `${first.important ? '🔴 IMPORTANT: ' : ''}${first.description?.slice(0, 80) || '🎤 Voice task'}`;
-            postAlarmToSW(taskTitle, taskBody, 'worker');
-            fireNativeAlarm(taskTitle, taskBody);
-          }
+          const incoming = newTasks.filter(t => {
+            if (prevIds.has(t.id)) return false;
+            if (t.status !== 'PENDING') return false;
+            if (t.workerName?.toLowerCase() !== currentUser.name?.toLowerCase()) return false;
+            
+            // Avoid old tasks triggering alarm sounds on app startup
+            const ts = t.createdAt?.toMillis ? t.createdAt.toMillis() : (t.createdAt?.seconds ? t.createdAt.seconds * 1000 : 0);
+            if (!ts) return false;
+            return (Date.now() - ts) < 60000; // 60 seconds limit
+          });
+
+          // Sound handled entirely by OneSignal push — no in-app duplicate
         }
 
         // Owner notification: when a worker adds a reply to a task
@@ -445,13 +683,16 @@ export const AppProvider = ({ children }) => {
             const prevCount = prevMap[task.id] || 0;
             const newCount = task.replies?.length || 0;
             if (newCount > prevCount && prevCount >= 0 && prevTasksRef.current.length > 0) {
-              playLoudNotification('owner');
               const lastReply = task.replies?.[task.replies.length - 1];
-              const replyTitle = `💬 ${task.workerName} replied`;
-              const replyBody = lastReply?.text?.slice(0, 80) || '🎤 Voice reply';
-              postAlarmToSW(replyTitle, replyBody, 'owner');
-              fireNativeAlarm(replyTitle, replyBody);
-              break;
+              const replyTs = lastReply?.createdAt?.toMillis ? lastReply.createdAt.toMillis() : (lastReply?.createdAt?.seconds ? lastReply.createdAt.seconds * 1000 : 0);
+              
+              // Only alert for brand new replies within 60 seconds
+              if (replyTs && (Date.now() - replyTs) < 60000) {
+                if (document.visibilityState === 'visible') {
+                  playLoudNotification('chat');
+                }
+                break;
+              }
             }
           }
         }
@@ -463,7 +704,7 @@ export const AppProvider = ({ children }) => {
       (err) => console.error('Tasks listener error:', err),
     );
     return unsub;
-  }, [authReady, currentUser, notificationsEnabled, playLoudNotification, postAlarmToSW, fireNativeAlarm, t]);
+  }, [authReady, currentUser, notificationsEnabled]);
 
   useEffect(() => {
     if (!authReady) return undefined;
@@ -482,26 +723,33 @@ export const AppProvider = ({ children }) => {
     const lastMsg = messages[messages.length - 1];
     const msgTs = lastMsg.createdAt?.toMillis ? lastMsg.createdAt.toMillis() : (lastMsg.createdAt instanceof Date ? lastMsg.createdAt.getTime() : 0);
     if (msgTs && Date.now() - msgTs < 2000) {
-      if (currentUser.role === 'worker' && lastMsg.sender === 'owner') {
-        if (activeChatRef.current !== 'GLOBAL' && activeChatRef.current !== 'owner') {
-          playLoudNotification('worker');
-          const mt = `💬 Message from Owner`;
-          const mb = lastMsg.text?.slice(0, 80) || '🎤 Voice message';
-          postAlarmToSW(mt, mb, 'worker');
-          fireNativeAlarm(mt, mb);
-        }
-      }
-      if (currentUser.role === 'owner' && lastMsg.sender !== 'owner') {
-        if (activeChatRef.current !== lastMsg.sender) {
-          playLoudNotification('owner');
-          const mt = `💬 ${lastMsg.sender}`;
-          const mb = lastMsg.text?.slice(0, 80) || '🎤 Voice message';
-          postAlarmToSW(mt, mb, 'owner');
-          fireNativeAlarm(mt, mb);
+      const cleanSender = lastMsg.sender?.toLowerCase().trim();
+      const cleanMe = currentUser.name?.toLowerCase().trim();
+      const cleanTarget = lastMsg.target?.toLowerCase().trim();
+      const cleanActiveChat = activeChatRef.current?.toLowerCase().trim();
+
+      // Don't chime for our own messages
+      if (cleanSender === cleanMe) return;
+
+      const isMainOwner = cleanMe === MAIN_OWNER_NAME.toLowerCase().trim();
+      const isTargetedToMe = cleanTarget === cleanMe ||
+                             (currentUser.role === 'worker' && (cleanTarget === 'worker' || lastMsg.target === 'GLOBAL')) ||
+                             (currentUser.role === 'owner' && isMainOwner && (cleanTarget === 'owner' || cleanTarget === 'admin@shonceramics.com'));
+
+      if (isTargetedToMe) {
+        // Only chime if we are not currently looking at this active chat
+        const isCurrentlyViewingChat = cleanActiveChat === cleanSender || 
+                                       (cleanActiveChat === 'global' && lastMsg.target === 'GLOBAL') ||
+                                       (cleanActiveChat === 'owner' && cleanTarget === 'owner');
+
+        if (!isCurrentlyViewingChat) {
+          if (document.visibilityState === 'visible') {
+            playLoudNotification('chat');
+          }
         }
       }
     }
-  }, [messages, currentUser, notificationsEnabled, playLoudNotification, postAlarmToSW, fireNativeAlarm, t]);
+  }, [messages, currentUser, notificationsEnabled, playLoudNotification, postAlarmToSW]);
 
   // 24-hour overdue task reminder system
   useEffect(() => {
@@ -531,19 +779,20 @@ export const AppProvider = ({ children }) => {
 
             // For workers: remind about their own overdue tasks
             if (currentUser.role === 'worker' && task.workerName?.toLowerCase() === currentUser.name?.toLowerCase()) {
-              playLoudNotification('worker');
+              if (document.visibilityState === 'visible') playLoudNotification('worker');
               const hoursAgo = Math.floor(age / (60 * 60 * 1000));
               // Show in-app alert for overdue task
               setUnseenAlert({ count: 1, tasks: [{ id: task.id, description: `⏰ OVERDUE (${hoursAgo}h): ${task.description}` }] });
               sendOneSignalPush(
                 currentUser.name,
                 `⏰ Task Overdue — ${hoursAgo}h ago`,
-                `"${task.description.slice(0, 60)}${task.description.length > 60 ? '...' : ''}"\n⏳ Assigned ${hoursAgo} hours ago. Please complete this task.${task.important ? '\n🔴 This is marked IMPORTANT!' : ''}`
+                `"${task.description.slice(0, 60)}${task.description.length > 60 ? '...' : ''}"\n⏳ Assigned ${hoursAgo} hours ago. Please complete this task.${task.important ? '\n🔴 This is marked IMPORTANT!' : ''}`,
+                { type: 'task' }
               );
             }
             // For owner: show overdue alert too
             if (currentUser.role === 'owner') {
-              playLoudNotification('owner');
+              if (document.visibilityState === 'visible') playLoudNotification('owner');
               const hoursAgo = Math.floor(age / (60 * 60 * 1000));
               sendSystemNotification(`⏰ Task Overdue — ${hoursAgo}h`, {
                 body: `${task.workerName}: "${task.description.slice(0, 60)}"`,
@@ -577,12 +826,17 @@ export const AppProvider = ({ children }) => {
 
     const checkUnseen = () => {
       const now = Date.now();
-      const myUnseenTasks = tasks.filter(
-        t => t.status === 'PENDING' &&
-          t.workerName?.toLowerCase() === currentUser.name?.toLowerCase() &&
-          !t.seenByWorker &&
-          !(t.replies && t.replies.length > 0)
-      );
+      // Only remind about tasks at least 2 minutes old \u2014 brand-new tasks are
+      // handled by the tasks listener sound + the addTask OneSignal push.
+      // This prevents the double-alarm that fired the moment a task arrived.
+      const myUnseenTasks = tasks.filter(t => {
+        if (t.status !== 'PENDING') return false;
+        if (t.workerName?.toLowerCase() !== currentUser.name?.toLowerCase()) return false;
+        if (t.seenByWorker) return false;
+        if (t.replies && t.replies.length > 0) return false;
+        const ts = t.createdAt?.toMillis?.() || (t.createdAt?.seconds ? t.createdAt.seconds * 1000 : 0);
+        return ts > 0 && (now - ts) >= TWO_MINUTES;
+      });
 
       if (myUnseenTasks.length === 0) {
         setUnseenAlert(null);
@@ -593,25 +847,25 @@ export const AppProvider = ({ children }) => {
       if (now - lastBuzz < TWO_MINUTES) return;
 
       localStorage.setItem(unseenReminderKey, String(now));
-      playLoudNotification('worker');
 
-      // In-app alert
       setUnseenAlert({
         count: myUnseenTasks.length,
         tasks: myUnseenTasks.slice(0, 3).map(t => t.description.slice(0, 50)),
       });
 
-      // Send one combined push for all unseen tasks
-      const taskList = myUnseenTasks.slice(0, 3).map(t =>
-        `\u2022 ${t.important ? '\ud83d\udd34 ' : ''}${t.description.slice(0, 40)}${t.description.length > 40 ? '...' : ''}`
-      ).join('\n');
-      const extra = myUnseenTasks.length > 3 ? `\n...and ${myUnseenTasks.length - 3} more` : '';
-
-      sendOneSignalPush(
-        currentUser.name,
-        `\ud83d\udd14 ${myUnseenTasks.length} Unseen Task${myUnseenTasks.length > 1 ? 's' : ''} \u2014 Open Now!`,
-        `${taskList}${extra}\n\n\ud83d\udc46 Open the app to view and respond.`
-      );
+      // Only send push when app is not visible (foregroundWillDisplay suppresses it if it is)
+      if (document.visibilityState !== 'visible') {
+        const taskList = myUnseenTasks.slice(0, 3).map(t =>
+          `\u2022 ${t.important ? '\ud83d\udd34 ' : ''}${t.description.slice(0, 40)}${t.description.length > 40 ? '...' : ''}`
+        ).join('\n');
+        const extra = myUnseenTasks.length > 3 ? `\n...and ${myUnseenTasks.length - 3} more` : '';
+        sendOneSignalPush(
+          currentUser.name,
+          `\ud83d\udd14 ${myUnseenTasks.length} Unseen Task${myUnseenTasks.length > 1 ? 's' : ''} \u2014 Open Now!`,
+          `${taskList}${extra}\n\n\ud83d\udc46 Open the app to view and respond.`,
+          { type: 'task' }
+        );
+      }
     };
 
     checkUnseen();
@@ -778,6 +1032,25 @@ export const AppProvider = ({ children }) => {
         }
       }
 
+      // Device Binding Logic
+      let currentDeviceId = localStorage.getItem('shu_device_id');
+      if (!currentDeviceId) {
+        currentDeviceId = Date.now().toString(36) + Math.random().toString(36).substring(2);
+        localStorage.setItem('shu_device_id', currentDeviceId);
+      }
+
+      if (!worker.deviceId) {
+        // First login: Bind device
+        try {
+          await updateDoc(doc(db, 'workers', workerDoc.id), { deviceId: currentDeviceId });
+        } catch (err) {
+          console.warn('Failed to bind device ID:', err);
+        }
+      } else if (worker.deviceId !== currentDeviceId) {
+        // Bound to another device
+        throw new Error(t('accountLockedToAnotherDevice') || 'Account is registered on another device. Please contact the owner to unlock.');
+      }
+
       const hasPreferredLanguage = Boolean(preferredLanguage);
       const needsLanguageSelection = !worker.language && !hasPreferredLanguage;
       const resolvedLanguage = worker.language || preferredLanguage || DEFAULT_LANGUAGE;
@@ -804,6 +1077,7 @@ export const AppProvider = ({ children }) => {
 
       setLanguageState(resolvedLanguage);
       setCurrentUser(user);
+      // OneSignal login handled by the login useEffect when currentUser.name is set
       return user;
     }
 
@@ -826,12 +1100,13 @@ export const AppProvider = ({ children }) => {
       const resolvedLanguage = preferredLanguage || DEFAULT_LANGUAGE;
       const user = {
         role: 'owner',
-        name: adminMatch ? adminMatch.name : (cleanName || 'Admin'),
+        name: adminMatch ? adminMatch.name : MAIN_OWNER_NAME,
         category: 'Admin',
         language: resolvedLanguage,
       };
       setLanguageState(resolvedLanguage);
       setCurrentUser(user);
+      // OneSignal login handled by the login useEffect when currentUser.name is set
       return user;
     }
   };
@@ -893,6 +1168,7 @@ export const AppProvider = ({ children }) => {
     // Aggressively clear ALL cached login/app data
     setCurrentUser(null);
     setActiveChat(null);
+    setShowGodModeModal(false);
     localStorage.removeItem(USER_STORAGE_KEY);
     localStorage.removeItem('shu_notifications');
     localStorage.removeItem('shu_last_read_ts');
@@ -929,14 +1205,14 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const addTask = async (description, workerName, important = false, audioUrl = null, imageUrl = null) => {
+  const addTask = async (description, workerName, important = false, audioUrl = null, imageUrl = null, documentUrl = null, documentName = null) => {
     const cleanDescription = cleanText(description);
-    if (!cleanDescription && !audioUrl && !imageUrl) return;
+    if (!cleanDescription && !audioUrl && !imageUrl && !documentUrl) return;
     if (cleanDescription) assertMaxText(cleanDescription, MAX_TEXT_LENGTH, t('taskTooLong'));
 
     try {
       await addDoc(collection(db, 'tasks'), {
-        description: cleanDescription || '🎤 Voice Task',
+        description: cleanDescription || (audioUrl ? '🎤 Voice Task' : documentUrl ? '' : imageUrl ? '' : '📋 Task'),
         workerName,
         status: 'PENDING',
         important: important,
@@ -946,20 +1222,25 @@ export const AppProvider = ({ children }) => {
         seenByWorker: null,
         audioUrl: audioUrl || null,
         imageUrl: imageUrl || null,
+        documentUrl: documentUrl || null,
+        documentName: documentName || null,
         createdAt: serverTimestamp(),
         createdBy: currentUser?.name || 'owner',
       });
-      const worker = workers.find(w => w.name === workerName);
+      const worker = workers.find(w => w.name?.toLowerCase().trim() === workerName?.toLowerCase().trim());
       const dept = worker?.category || 'General';
       const pushBody = audioUrl
         ? `🎤 Voice task assigned\n👤 From: ${currentUser?.name || 'Owner'}\n🏭 Dept: ${dept}`
+        : documentUrl
+        ? `📄 Document task assigned\n👤 From: ${currentUser?.name || 'Owner'}\n🏭 Dept: ${dept}`
         : imageUrl
         ? `🖼️ Image task assigned\n👤 From: ${currentUser?.name || 'Owner'}\n🏭 Dept: ${dept}`
         : `${important ? '⚠️ IMPORTANT: ' : ''}${cleanDescription}\n👤 From: ${currentUser?.name || 'Owner'}\n🏭 Dept: ${dept}`;
       sendOneSignalPush(
         workerName,
-        important ? '🔴 Urgent Task from Owner' : (audioUrl ? '🎤 Voice Task Assigned' : imageUrl ? '🖼️ Image Task Assigned' : '📋 New Task Assigned'),
-        pushBody
+        important ? '🔴 Urgent Task from Owner' : (audioUrl ? '🎤 Voice Task Assigned' : documentUrl ? '📄 Document Task Assigned' : imageUrl ? '🖼️ Image Task Assigned' : '📋 New Task Assigned'),
+        pushBody,
+        { type: 'task' }
       );
     } catch (err) {
       console.error('Error adding task:', err);
@@ -983,20 +1264,32 @@ export const AppProvider = ({ children }) => {
 
     try {
       const updates = {
-        response: cleanResponse || null,
         status,
         respondedAt: serverTimestamp(),
       };
+      if (cleanResponse) updates.response = cleanResponse;
       await updateDoc(doc(db, 'tasks', taskId), updates);
 
       // Notify owner when worker completes a task
       if (status === 'DONE' && currentUser?.role === 'worker') {
-        sendOneSignalPush(
-          null,
-          '✅ Task Completed',
-          `${currentUser.name} completed: "${cleanResponse || 'No response'}"`,
-          { targetRole: 'owner' }
-        );
+        const currentTask = tasks.find((t) => t.id === taskId);
+        const creator = currentTask?.createdBy !== 'owner' ? currentTask?.createdBy : null;
+        
+        if (creator) {
+          sendOneSignalPush(
+            creator,
+            '✅ Task Completed',
+            `${currentUser.name} completed: "${cleanResponse || 'No response'}"`,
+            { type: 'chat' }
+          );
+        } else {
+          sendOneSignalPush(
+            null,
+            '✅ Task Completed',
+            `${currentUser.name} completed: "${cleanResponse || 'No response'}"`,
+            { targetRole: 'owner', type: 'chat' }
+          );
+        }
       }
     } catch (err) {
       console.error('Error responding to task:', err);
@@ -1005,9 +1298,9 @@ export const AppProvider = ({ children }) => {
   };
 
   // Acknowledge a task (reply without completing)
-  const acknowledgeTask = async (taskId, replyText, audioUrl = null, imageUrl = null) => {
+  const acknowledgeTask = async (taskId, replyText, audioUrl = null, imageUrl = null, documentUrl = null, documentName = null) => {
     const cleanReply = cleanText(replyText);
-    if (!cleanReply && !audioUrl && !imageUrl) return;
+    if (!cleanReply && !audioUrl && !imageUrl && !documentUrl) return;
     if (cleanReply) assertMaxText(cleanReply, MAX_TEXT_LENGTH, t('responseTooLong'));
 
     try {
@@ -1022,6 +1315,10 @@ export const AppProvider = ({ children }) => {
       };
       if (audioUrl) newReply.audioUrl = audioUrl;
       if (imageUrl) newReply.imageUrl = imageUrl;
+      if (documentUrl) {
+        newReply.documentUrl = documentUrl;
+        newReply.documentName = documentName;
+      }
 
       await updateDoc(taskRef, {
         replies: [...existingReplies, newReply],
@@ -1029,12 +1326,23 @@ export const AppProvider = ({ children }) => {
       });
 
       // Notify owner about the acknowledgment
-      sendOneSignalPush(
-        null,
-        `💬 ${currentUser?.name || 'Worker'} replied`,
-        `${audioUrl ? '🎙️ Voice Note' : `"${cleanReply}"`}\n📋 Task: ${(taskData?.description || '').slice(0, 50)}`,
-        { targetRole: 'owner' }
-      );
+      const creator = taskData?.createdBy !== 'owner' ? taskData?.createdBy : null;
+      const pushPrefix = documentUrl ? `📄 Document` : audioUrl ? '🎙️ Voice Note' : `"${cleanReply}"`;
+      if (creator) {
+        sendOneSignalPush(
+          creator,
+          `💬 ${currentUser?.name || 'Worker'} replied`,
+          `${pushPrefix}\n📋 Task: ${(taskData?.description || '').slice(0, 50)}`,
+          { type: 'chat' }
+        );
+      } else {
+        sendOneSignalPush(
+          null,
+          `💬 ${currentUser?.name || 'Worker'} replied`,
+          `${pushPrefix}\n📋 Task: ${(taskData?.description || '').slice(0, 50)}`,
+          { targetRole: 'owner', type: 'chat' }
+        );
+      }
     } catch (err) {
       console.error('Error acknowledging task:', err);
       throw new Error(normalizeFirestoreError(err), { cause: err });
@@ -1056,6 +1364,23 @@ export const AppProvider = ({ children }) => {
         console.error('Error marking task seen:', err);
       }
     }
+    // Clear all pending notifications from the notification bar
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const os = window.plugins?.OneSignal;
+        if (os?.Notifications?.clearAll) os.Notifications.clearAll();
+      } catch {}
+      try {
+        const { LocalNotifications: LN } = await import('@capacitor/local-notifications');
+        const pending = await LN.getPending();
+        if (pending.notifications.length > 0) {
+          await LN.cancel({ notifications: pending.notifications.map(n => ({ id: n.id })) });
+        }
+      } catch {}
+    }
+    // Reset unseen reminder so it doesn't fire again immediately
+    localStorage.removeItem(`shu_unseen_reminders_${currentUser.name}`);
+    setUnseenAlert(null);
   }, [currentUser, tasks]);
 
   const deleteTask = async (taskId) => {
@@ -1075,33 +1400,56 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const sendMessage = async (sender, target, text, imageUrl = null) => {
+  const sendMessage = async (sender, target, text, imageUrl = null, documentUrl = null, documentName = null) => {
     const cleanTextStr = cleanText(text);
-    if (!cleanTextStr && !imageUrl) return;
+    if (!cleanTextStr && !imageUrl && !documentUrl) return;
     if (cleanTextStr) assertMaxText(cleanTextStr, MAX_TEXT_LENGTH, t('messageTooLong'));
 
     try {
       await addDoc(collection(db, 'messages'), {
         sender,
         target,
-        text: cleanTextStr || '🖼️ Image attached',
+        text: cleanTextStr || (audioUrl ? '🎙️ Voice Note' : documentUrl ? '' : imageUrl ? '' : ''),
         imageUrl: imageUrl || null,
+        documentUrl: documentUrl || null,
+        documentName: documentName || null,
         createdAt: serverTimestamp(),
       });
       // Push notification to the target via OneSignal
       if (target !== 'GLOBAL') {
-        if (sender === 'owner') {
+        const senderDisplayName = currentUser?.name || sender;
+        const cleanTarget = target.toLowerCase().trim();
+        const mainOwnerClean = MAIN_OWNER_NAME.toLowerCase().trim();
+        
+        // Is this message going to the "Owner" (either by specific name, generic 'owner' string, or admin email)
+        const isGenericOwnerTarget = cleanTarget === 'owner' || 
+                                     cleanTarget === 'admin@shonceramics.com' || 
+                                     cleanTarget === 'himanshu' ||
+                                     cleanTarget === mainOwnerClean;
+
+        if (currentUser?.role === 'owner') {
+          // Owner/Admin to worker
           sendOneSignalPush(
             target,
-            '💬 Message from Owner',
-            `"${cleanTextStr.length > 80 ? cleanTextStr.slice(0, 80) + '...' : cleanTextStr}"\n👤 ${currentUser?.name || 'Owner'} sent you a message`
+            `💬 Message from ${senderDisplayName}`,
+            `"${cleanTextStr.length > 80 ? cleanTextStr.slice(0, 80) + '...' : cleanTextStr}"\n👤 ${senderDisplayName} sent you a message`,
+            { type: 'chat' }
           );
-        } else if (target === 'owner') {
+        } else if (isGenericOwnerTarget) {
+          // Worker to Owner — target by external_id only to avoid double notifications
           sendOneSignalPush(
-            null,
-            `💬 ${sender} sent a message`,
+            mainOwnerClean,
+            `💬 ${senderDisplayName} sent a message`,
             `"${cleanTextStr.length > 80 ? cleanTextStr.slice(0, 80) + '...' : cleanTextStr}"`,
-            { targetRole: 'owner' }
+            { type: 'chat' }
+          );
+        } else {
+          // Worker to specific sub-admin
+          sendOneSignalPush(
+            target,
+            `💬 ${senderDisplayName} sent a message`,
+            `"${cleanTextStr.length > 80 ? cleanTextStr.slice(0, 80) + '...' : cleanTextStr}"`,
+            { type: 'chat' }
           );
         }
       }
@@ -1121,10 +1469,19 @@ export const AppProvider = ({ children }) => {
         createdAt: serverTimestamp(),
       });
       if (target !== 'GLOBAL') {
-        if (sender === 'owner') {
-          sendOneSignalPush(target, '🎤 Voice Message from Owner', `${currentUser?.name || 'Owner'} sent you a voice note`);
-        } else if (target === 'owner') {
-          sendOneSignalPush(null, `🎤 ${sender} sent a voice note`, 'Tap to listen', { targetRole: 'owner' });
+        const senderDisplayName = currentUser?.name || sender;
+        const cleanTarget = target.toLowerCase().trim();
+        const mainOwnerClean = MAIN_OWNER_NAME.toLowerCase().trim();
+        const isGenericOwnerTarget = cleanTarget === 'owner' || 
+                                     cleanTarget === 'admin@shonceramics.com' || 
+                                     cleanTarget === mainOwnerClean;
+
+        if (currentUser?.role === 'owner') {
+          sendOneSignalPush(target, `🎤 Voice Message from ${senderDisplayName}`, `${senderDisplayName} sent you a voice note`, { type: 'chat' });
+        } else if (isGenericOwnerTarget) {
+          sendOneSignalPush(mainOwnerClean, `🎤 ${senderDisplayName} sent a voice note`, 'Tap to listen', { type: 'chat' });
+        } else {
+          sendOneSignalPush(target, `🎤 ${senderDisplayName} sent a voice note`, 'Tap to listen', { type: 'chat' });
         }
       }
     } catch (err) {
@@ -1133,16 +1490,55 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const getConversation = useCallback((workerName) =>
-    messages.filter(
-      (message) =>
-        (message.sender === workerName && message.target === 'owner') ||
-        (message.sender === 'owner' && message.target === workerName) ||
-        message.target === 'GLOBAL',
-    ), [messages]);
+  const getConversation = useCallback((partnerName) => {
+    if (!partnerName || !currentUser?.name) return [];
+    const cleanPartner = partnerName.toLowerCase().trim();
+    const cleanMe = currentUser.name.toLowerCase().trim();
+    const mainOwnerClean = MAIN_OWNER_NAME.toLowerCase().trim();
+    const isMainOwner = cleanMe === mainOwnerClean;
+    const isPartnerMainOwner = cleanPartner === mainOwnerClean;
+
+    return messages.filter((message) => {
+      const cleanSender = message.sender?.toLowerCase().trim();
+      const cleanTarget = message.target?.toLowerCase().trim();
+
+      // Direct DM — always match
+      if (cleanSender === cleanPartner && cleanTarget === cleanMe) return true;
+      if (cleanSender === cleanMe && cleanTarget === cleanPartner) return true;
+
+      // Global broadcasts always show
+      if (message.target === 'GLOBAL') return true;
+
+      if (currentUser?.role === 'worker' && isPartnerMainOwner) {
+        // Worker chatting with main owner slot: show legacy 'owner'-targeted messages they sent,
+        // and replies from the main owner (not from other admins)
+        const isLegacyOwnerTarget = cleanTarget === 'owner' || cleanTarget === 'admin@shonceramics.com' || cleanTarget === mainOwnerClean;
+        if (cleanSender === cleanMe && isLegacyOwnerTarget) return true;
+        if ((cleanSender === 'owner' || cleanSender === mainOwnerClean) && cleanTarget === cleanMe) return true;
+      } else if (currentUser?.role === 'owner' && isMainOwner) {
+        // Main owner sees legacy 'owner' messages too
+        const isLegacyOwnerTarget = cleanTarget === 'owner' || cleanTarget === 'admin@shonceramics.com';
+        if (cleanSender === cleanPartner && isLegacyOwnerTarget) return true;
+        if (cleanSender === 'owner' && cleanTarget === cleanPartner) return true;
+      }
+      // Non-main-owner admins: only direct messages (handled above) — no cross-admin visibility
+
+      return false;
+    });
+  }, [messages, currentUser?.name, currentUser?.role]);
+
+  // allAdmins: the hardcoded main owner + all Firestore sub-admins, deduped.
+  // Workers use this list to pick who to chat with.
+  const allAdmins = useMemo(() => {
+    const mainOwner = { id: 'main-owner', name: MAIN_OWNER_NAME, isMainOwner: true };
+    const subAdmins = admins.filter((a) => a.name?.toLowerCase() !== MAIN_OWNER_NAME.toLowerCase());
+    return [mainOwner, ...subAdmins];
+  }, [admins]);
 
   const contextValue = useMemo(() => ({
     currentUser,
+    admins,
+    allAdmins,
     language,
     setLanguage,
     languageOptions: LANGUAGE_OPTIONS,
@@ -1193,6 +1589,7 @@ export const AppProvider = ({ children }) => {
     lastReadTimestamp,
     unseenAlert,
     setUnseenAlert,
+    updateAvailable,
   }), [
     currentUser, language, t, getDepartmentLabel, login, logout, createWorkerAccount,
     updateWorkerPassword, toggleOnline, tasks, addTask, respondToTask, acknowledgeTask,
@@ -1201,11 +1598,218 @@ export const AppProvider = ({ children }) => {
     messages, sendMessage, sendVoiceMessage, getConversation, deleteMessage, unreadCount, markMessagesRead,
     workers, updateWorker, deleteWorker, playLoudNotification, setNotificationsEnabled,
     notificationsEnabled, ownerNotifPrefs, setOwnerNotifPrefs, activeChat, setActiveChat, authReady,
-    lastReadTimestamp, unseenAlert, setUnseenAlert
+    lastReadTimestamp, unseenAlert, setUnseenAlert, updateAvailable
   ]);
 
   return (
     <AppContext.Provider value={contextValue}>
+      {showGodModeModal && (() => {
+        const autoStartPath = (() => {
+          const m = manufacturer;
+          if (m.includes('xiaomi') || m.includes('redmi') || m.includes('poco'))
+            return 'Settings → Apps → Manage Apps → Shon Ceramics → Autostart → ON';
+          if (m.includes('samsung'))
+            return 'Settings → Apps → Shon Ceramics → Battery → Allow Background Activity → ON';
+          if (m.includes('huawei') || m.includes('honor'))
+            return 'Settings → Apps → Shon Ceramics → Battery → App Launch → Manage Manually → enable all 3 toggles';
+          if (m.includes('oppo') || m.includes('realme'))
+            return "Settings → Battery → Battery Optimization → Shon Ceramics → Don't Optimize";
+          if (m.includes('oneplus'))
+            return "Settings → Battery → Battery Optimization → Shon Ceramics → Don't Optimize";
+          if (m.includes('vivo'))
+            return 'Settings → More Settings → Applications → Autostart Management → enable Shon Ceramics';
+          return '';
+        })();
+        const box = { background: '#1a1a1a', borderRadius: 10, padding: '1rem 1.2rem', maxWidth: 360, width: '100%', textAlign: 'left' };
+        const mkBtn = (bg, color, disabled = false) => ({
+          padding: '0.75rem 1.5rem', fontSize: '0.95rem', fontWeight: 'bold',
+          borderRadius: '8px', border: 'none', backgroundColor: disabled ? '#333' : bg,
+          color: disabled ? '#777' : color, cursor: disabled ? 'not-allowed' : 'pointer', width: '100%',
+        });
+        return (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 100000, backgroundColor: '#0a0a0a', color: '#fff',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            padding: '1.5rem', textAlign: 'center', gap: '1rem', overflowY: 'auto',
+          }}>
+            {/* <img src="/logo.jpg" alt="Shon Ceramics" style={{ width: 200, borderRadius: 8, marginBottom: 4 }} /> */}
+            <h1 style={{ fontSize: '1.2rem', margin: 0, color: '#ff4444' }}>CRITICAL SETUP REQUIRED</h1>
+            <p style={{ margin: 0, color: '#ccc', fontSize: '0.85rem', maxWidth: 340 }}>
+              Without these settings you will miss task alerts. This is mandatory.
+            </p>
+
+
+
+            {/* Step 1 — Battery */}
+            <div style={box}>
+              <p style={{ margin: '0 0 0.5rem', fontWeight: 700, color: batteryOk ? '#22c55e' : '#fbbf24' }}>
+                {batteryOk ? '✅ STEP 1 DONE — Battery Unrestricted' : 'STEP 1 — Remove Battery Restriction'}
+              </p>
+              {batteryOk ? (
+                <p style={{ margin: 0, fontSize: '0.85rem', color: '#86efac' }}>Battery optimization is disabled. App will stay alive.</p>
+              ) : (
+                <>
+                  <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: '#ccc', lineHeight: 1.5 }}>
+                    Tap below. When asked, select <strong style={{ color: '#fff' }}>"Allow"</strong>. Then come back here — this page will auto-verify.
+                  </p>
+                  <button style={mkBtn('#3b82f6', '#fff')} onClick={() => {
+                    ShuHelper.openBatterySettings().catch(() => {
+                      if (window.cordova) window.cordova.exec(null, null, 'BackgroundModeExt', 'battery', []);
+                    });
+                  }}>
+                    → Open Battery Settings Now
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Step 2 — AutoStart */}
+            <div style={box}>
+              <p style={{ margin: '0 0 0.5rem', fontWeight: 700, color: autoStartTapped ? '#22c55e' : '#fbbf24' }}>
+                {autoStartTapped ? '✅ STEP 2 DONE — AutoStart Enabled' : 'STEP 2 — Enable AutoStart'}
+              </p>
+              {autoStartTapped ? (
+                <p style={{ margin: 0, fontSize: '0.85rem', color: '#86efac' }}>AutoStart has been enabled for this device.</p>
+              ) : (
+                <>
+                  <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: '#ccc', lineHeight: 1.5 }}>
+                    Tap below to open AutoStart settings. Find <strong style={{ color: '#fff' }}>Shon Ceramics</strong> and toggle it ON. Then come back.
+                  </p>
+                  <button style={{ ...mkBtn('#8b5cf6', '#fff'), marginBottom: '0.5rem' }} onClick={() => {
+                    if (window.cordova) {
+                      window.cordova.exec(null, null, 'BackgroundModeExt', 'appstart', [false]);
+                    }
+                    setAutoStartTapped(true);
+                    localStorage.setItem('shu_autostart_tapped', 'true');
+                  }}>
+                    → Open AutoStart Settings
+                  </button>
+                  {autoStartPath ? (
+                    <p style={{ margin: '0.4rem 0 0', fontSize: '0.78rem', color: '#999', lineHeight: 1.5 }}>
+                      If nothing opens: {autoStartPath}
+                    </p>
+                  ) : (
+                    <p style={{ margin: '0.4rem 0 0', fontSize: '0.78rem', color: '#999', lineHeight: 1.5 }}>
+                      If nothing opens: Settings → Apps → Shon Ceramics → Battery → Unrestricted
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Step 3 — Pause App Activity */}
+            <div style={box}>
+              <p style={{ margin: '0 0 0.5rem', fontWeight: 700, color: pauseAppTapped ? '#22c55e' : '#fbbf24' }}>
+                {pauseAppTapped ? '✅ STEP 3 DONE — Activity Paused Off' : 'STEP 3 — Disable Activity Pausing'}
+              </p>
+              {pauseAppTapped ? (
+                <p style={{ margin: 0, fontSize: '0.85rem', color: '#86efac' }}>"Pause app activity if unused" is turned off.</p>
+              ) : (
+                <>
+                  <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: '#ccc', lineHeight: 1.5 }}>
+                    Tap below — it will open the App Settings page. Find <strong style={{ color: '#fff' }}>"Pause app activity if unused"</strong> (or "Remove permissions if unused") and <strong style={{ color: '#fff' }}>TURN IT OFF</strong>.
+                  </p>
+                  <button style={mkBtn('#ec4899', '#fff')} onClick={() => {
+                    if (window.cordova) {
+                      window.cordova.exec(null, null, 'BackgroundModeExt', 'appstart', [true]);
+                    }
+                    setPauseAppTapped(true);
+                    localStorage.setItem('shu_pause_app_tapped', 'true');
+                  }}>
+                    → Open App Info (Step 3)
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Step 4 — Display Over Other Apps */}
+            <div style={box}>
+              <p style={{ margin: '0 0 0.5rem', fontWeight: 700, color: overlayOk ? '#22c55e' : '#fbbf24' }}>
+                {overlayOk ? '✅ STEP 4 DONE — Pop-ups Allowed' : 'STEP 4 — Allow Pop-up Windows'}
+              </p>
+              {overlayOk ? (
+                <>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#86efac' }}>App is allowed to display over other apps / show pop-up alerts from background.</p>
+                </>
+              ) : (
+                <>
+                  <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: '#ccc', lineHeight: 1.5 }}>
+                    Tap below to open settings. Turn on <strong style={{ color: '#fff' }}>"Allow display over other apps"</strong> (or <strong style={{ color: '#fff' }}>"Display pop-up windows while running in background"</strong>).
+                  </p>
+                  <button style={mkBtn('#10b981', '#fff')} onClick={() => {
+                    ShuHelper.openOverlaySettings().catch((err) => {
+                      console.error('ShuHelper.openOverlaySettings failed', err);
+                      alert('Error opening overlay settings: ' + (err.message || err));
+                      if (window.cordova) {
+                        window.cordova.exec(null, null, 'BackgroundModeExt', 'openOverlay', []);
+                      } else {
+                        ShuHelper.openAppSettings().catch(() => {});
+                      }
+                    });
+                  }}>
+                    → Grant Pop-up Permission
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Continue button — always visible so user is never stuck */}
+            {(() => {
+              const allDone = batteryOk && autoStartTapped && pauseAppTapped && overlayOk;
+              return (
+                <button
+                  style={{
+                    padding: '1rem 2rem', fontSize: '1.1rem', fontWeight: 'bold',
+                    borderRadius: '10px', border: 'none', width: '100%', maxWidth: 360,
+                    backgroundColor: allDone ? '#22c55e' : '#444',
+                    color: '#fff', cursor: 'pointer',
+                  }}
+                  onClick={() => {
+                    localStorage.setItem('shu_god_mode_v2', 'true');
+                    setShowGodModeModal(false);
+                  }}
+                >
+                  {allDone ? '✅ All Done — Enter App' : 'Skip & Enter App →'}
+                </button>
+              );
+            })()}
+
+            <p style={{ margin: 0, fontSize: '0.7rem', color: '#666' }}>
+              Note: Skipping may cause notifications to fail when the app is closed.
+            </p>
+          </div>
+        );
+      })()}
+      {notifPermissionDenied && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 99999,
+          backgroundColor: '#111', color: '#fff',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          padding: '2rem', textAlign: 'center', gap: '1.5rem',
+        }}>
+          <div style={{ fontSize: '3rem' }}>🔔</div>
+          <h1 style={{ fontSize: '1.5rem', margin: 0 }}>Notifications Required</h1>
+          <p style={{ margin: 0, maxWidth: 320, lineHeight: 1.6 }}>
+            This app <strong>must</strong> have notifications enabled to alert you about new tasks.
+          </p>
+          <p style={{ margin: 0, maxWidth: 320, lineHeight: 1.6, color: '#ccc' }}>
+            Go to: <strong style={{ color: '#fff' }}>Settings → Apps → Shon Ceramics → Notifications → Allow</strong>
+          </p>
+          <p style={{ margin: 0, color: '#999', fontSize: '0.85rem' }}>Then close and reopen the app.</p>
+          <button
+            onClick={() => { try { window.open('app-settings:', '_system'); } catch {} }}
+            style={{
+              marginTop: '0.5rem', padding: '0.9rem 2rem',
+              fontSize: '1rem', fontWeight: 'bold',
+              borderRadius: '8px', border: 'none',
+              backgroundColor: '#e53e3e', color: '#fff', cursor: 'pointer',
+            }}
+          >
+            Open App Settings
+          </button>
+        </div>
+      )}
       {children}
     </AppContext.Provider>
   );

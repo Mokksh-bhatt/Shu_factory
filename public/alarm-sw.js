@@ -13,16 +13,17 @@ self.addEventListener('message', (event) => {
 
   if (type === 'SHOW_ALARM') {
     const notifTag = tag || `shu-alarm-${Date.now()}`;
+    const isChat = mode === 'chat';
 
     const notifPromise = self.registration.showNotification(title || 'Shu Factory', {
       body: body || '',
       icon: '/logo.jpg',
       badge: '/logo.jpg',
       tag: notifTag,
-      requireInteraction: true,  // stays on screen until dismissed — critical for loud effect
-      renotify: true,            // re-alert even if same tag exists
+      requireInteraction: !isChat,  // stays on screen until dismissed for alarms, standard for chat
+      renotify: !isChat,            // re-alert for alarms, standard for chat
       silent: false,
-      vibrate: VIBRATE_PATTERN,
+      vibrate: isChat ? [300, 100, 300] : VIBRATE_PATTERN,
       data: { mode: mode || 'worker' },
     });
 
@@ -43,16 +44,17 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'Shu Factory';
   const body = data.body || '';
   const mode = data.mode || 'worker';
+  const isChat = mode === 'chat';
 
   const notifPromise = self.registration.showNotification(title, {
     body,
     icon: '/logo.jpg',
     badge: '/logo.jpg',
     tag: `shu-alarm-${Date.now()}`,
-    requireInteraction: true,
-    renotify: true,
+    requireInteraction: !isChat,
+    renotify: !isChat,
     silent: false,
-    vibrate: VIBRATE_PATTERN,
+    vibrate: isChat ? [300, 100, 300] : VIBRATE_PATTERN,
     data: { mode },
   });
 

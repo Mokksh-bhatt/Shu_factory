@@ -1,0 +1,8 @@
+{
+  "name": "shu-factory-functions",
+  "engines": { "node": "18" },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-functions": "^4.9.0"
+  }
+}

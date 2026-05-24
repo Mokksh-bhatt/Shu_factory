@@ -4,26 +4,34 @@ import { BarChart2, CheckCircle, Clock, Users, Briefcase } from 'lucide-react';
 
 export default function OwnerAnalyticsView({ tasks, workers, departments, getDepartmentLabel, t }) {
   const stats = useMemo(() => {
-    const totalWorkers = workers.length;
-    const totalTasks = tasks.length;
-    const completedTasks = tasks.filter(task => task.status === 'DONE').length;
-    const pendingTasks = tasks.filter(task => task.status === 'PENDING').length;
+    const safeWorkers = workers || [];
+    const safeTasks = tasks || [];
+    const safeDepts = departments || [];
+
+    const totalWorkers = safeWorkers.length;
+    const totalTasks = safeTasks.length;
+    const completedTasks = safeTasks.filter(task => task.status === 'DONE').length;
+    const pendingTasks = safeTasks.filter(task => task.status === 'PENDING').length;
     const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
     // Group tasks by the worker's category
     const workerCategoryMap = {};
-    workers.forEach(w => {
-      workerCategoryMap[w.name?.toLowerCase()] = w.category || 'General';
+    safeWorkers.forEach(w => {
+      if (w?.name) {
+        workerCategoryMap[w.name.toLowerCase().trim()] = w.category || 'General';
+      }
     });
 
     const tasksByDept = {};
     const completedByDept = {};
-    departments.forEach(dept => {
+    safeDepts.forEach(dept => {
       tasksByDept[dept] = 0;
       completedByDept[dept] = 0;
     });
-    tasks.forEach(task => {
-      const dept = workerCategoryMap[task.workerName?.toLowerCase()] || 'General';
+
+    safeTasks.forEach(task => {
+      const workerName = task.workerName?.toLowerCase().trim();
+      const dept = workerCategoryMap[workerName] || 'General';
       tasksByDept[dept] = (tasksByDept[dept] || 0) + 1;
       if (task.status === 'DONE') {
         completedByDept[dept] = (completedByDept[dept] || 0) + 1;
@@ -31,13 +39,13 @@ export default function OwnerAnalyticsView({ tasks, workers, departments, getDep
     });
 
     const workersByDept = {};
-    departments.forEach(dept => {
-      workersByDept[dept] = workers.filter(w => (w.category || 'General') === dept).length;
+    safeDepts.forEach(dept => {
+      workersByDept[dept] = safeWorkers.filter(w => (w.category || 'General') === dept).length;
     });
 
     // Top performers - workers with the most completed tasks
     const workerCompletions = {};
-    tasks.filter(t => t.status === 'DONE').forEach(task => {
+    safeTasks.filter(t => t.status === 'DONE').forEach(task => {
       const name = task.workerName || 'Unknown';
       workerCompletions[name] = (workerCompletions[name] || 0) + 1;
     });

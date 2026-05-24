@@ -1,12 +1,12 @@
 # Shon Ceramics — Build APK (portable, no MSI installs needed)
 # Run: cd "C:\Users\mokks\Desktop\anti\Shu_factory" && .\build-apk.ps1
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 $ProgressPreference = "SilentlyContinue"  # Faster downloads
 
 $PROJECT_ROOT = "C:\Users\mokks\Desktop\anti\Shu_factory"
 $TOOLS_DIR    = "C:\Users\mokks\.android-build"
-$JDK_DIR      = "$TOOLS_DIR\jdk17"
+$JDK_DIR      = "$TOOLS_DIR\jdk21"
 $ANDROID_SDK  = "$TOOLS_DIR\sdk"
 $CMDLINE_TOOLS= "$ANDROID_SDK\cmdline-tools\latest\bin"
 
@@ -23,32 +23,33 @@ Write-Host @"
 =====================================================
 "@ -ForegroundColor Cyan
 
-# ── 1. JDK 17 (portable ZIP, no MSI) ─────────────────────────────────────────
-Step "Setting up JDK 17..."
+# ── 1. JDK 21 (portable ZIP, no MSI) ─────────────────────────────────────────
+Step "Setting up JDK 21..."
 
 if (-not (Test-Path "$JDK_DIR\bin\java.exe")) {
-    $jdkZip = "$TOOLS_DIR\jdk17.zip"
-    $jdkUrl = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.11%2B9/OpenJDK17U-jdk_x64_windows_hotspot_17.0.11_9.zip"
+    $jdkZip = "$TOOLS_DIR\jdk21.zip"
+    $jdkUrl = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.3%2B9/OpenJDK21U-jdk_x64_windows_hotspot_21.0.3_9.zip"
 
-    Info "Downloading Eclipse Temurin JDK 17 (~200MB)..."
+    Info "Downloading Eclipse Temurin JDK 21 (~200MB)..."
     Invoke-WebRequest -Uri $jdkUrl -OutFile $jdkZip -UseBasicParsing
     OK "Downloaded"
 
     Info "Extracting JDK..."
     Expand-Archive -Path $jdkZip -DestinationPath $TOOLS_DIR -Force
-    # Rename the extracted folder to jdk17
-    $extracted = Get-ChildItem $TOOLS_DIR -Directory | Where-Object { $_.Name -like "jdk-17*" } | Select-Object -First 1
-    if ($extracted) { Rename-Item $extracted.FullName "jdk17" }
+    $extracted = Get-ChildItem $TOOLS_DIR -Directory | Where-Object { $_.Name -like "jdk-21*" } | Select-Object -First 1
+    if ($extracted) { Rename-Item $extracted.FullName "jdk21" -ErrorAction SilentlyContinue }
     Remove-Item $jdkZip -Force
-    OK "JDK 17 extracted"
+    OK "JDK 21 extracted"
 } else {
-    OK "JDK 17 already present"
+    OK "JDK 21 already present"
 }
 
 $env:JAVA_HOME = $JDK_DIR
 $env:PATH = "$JDK_DIR\bin;$env:PATH"
-$jv = (java -version 2>&1 | Select-String '(\d+)' | Select-Object -First 1).Matches[0].Value
-OK "Java: $jv"
+# java -version writes to stderr; suppress the NativeCommandError in PS 5.1
+$jvOut = $null
+try { $jvOut = (& java -version 2>&1) -join ' ' } catch {}
+OK "Java: $jvOut"
 
 # ── 2. Android SDK command-line tools ─────────────────────────────────────────
 Step "Setting up Android SDK..."

@@ -55,9 +55,9 @@ export default function Login() {
   const fields = [
     <motion.div key="logo" custom={0} variants={itemVariants} initial="hidden" animate="visible" style={{ textAlign: 'center', marginBottom: 8 }}>
       <img
-        src="/images.jpg"
+        src="/logo.jpg"
         alt={t('appName')}
-        style={{ width: '180px', height: 'auto', margin: '0 auto', display: 'block', borderRadius: '12px' }}
+        style={{ width: '240px', height: 'auto', margin: '0 auto', display: 'block', borderRadius: '10px' }}
       />
     </motion.div>,
     <motion.div key="name" custom={1} variants={itemVariants} initial="hidden" animate="visible">
@@ -129,7 +129,7 @@ export default function Login() {
     </motion.div>,
     <motion.p key="hint" custom={6} variants={itemVariants} initial="hidden" animate="visible" style={{ color: 'var(--on-surface-variant)', fontSize: '0.85rem', textAlign: 'center' }}>
       {t('workersUseAdminCreds')}
-    </motion.p>,
+    </motion.p>
   ];
 
   return (

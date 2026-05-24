@@ -7,25 +7,31 @@ import { useToast } from '../Toast';
 import { useAppContext } from '../../context/AppContext';
 import { formatTime } from '../../utils/formatTime';
 import { isInDateRange, groupByDate, formatDateMarker } from '../../utils/dateUtils';
+import ImageLightbox from '../ImageLightbox';
 
 export default function OwnerTasksView({ workers, tasks, addTask, deleteTask, language, t }) {
   const showToast = useToast();
-  const { toggleTaskImportant, overdueReminders } = useAppContext();
+  const { toggleTaskImportant, overdueReminders, currentUser } = useAppContext();
   const [targetWorker, setTargetWorker] = useState('');
   const [taskWorkerFilter, setTaskWorkerFilter] = useState('all');
   const [taskStatusFilter, setTaskStatusFilter] = useState('all');
   const [taskDateFilter, setTaskDateFilter] = useState('all');
   const [markImportant, setMarkImportant] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(null); // task id to delete
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [lightboxSrc, setLightboxSrc] = useState(null);
 
   const visibleTasks = useMemo(() => {
+    const mainOwner = (import.meta.env.VITE_OWNER_NAME || 'Himanshu').trim().toLowerCase();
+    const isMainOwner = currentUser?.name?.toLowerCase() === mainOwner;
     return tasks.filter((task) => {
+      // Main owner sees all tasks; other admins only see tasks they created + legacy tasks
+      if (!isMainOwner && task.createdBy && task.createdBy !== currentUser?.name && task.createdBy !== 'owner') return false;
       if (taskWorkerFilter !== 'all' && task.workerName !== taskWorkerFilter) return false;
       if (taskStatusFilter !== 'all' && task.status !== taskStatusFilter) return false;
       if (!isInDateRange(task.createdAt, taskDateFilter)) return false;
       return true;
     });
-  }, [tasks, taskWorkerFilter, taskStatusFilter, taskDateFilter]);
+  }, [tasks, taskWorkerFilter, taskStatusFilter, taskDateFilter, currentUser?.name]);
 
   const taskGroups = useMemo(() => groupByDate(visibleTasks, (task) => task.createdAt), [visibleTasks]);
 
@@ -57,17 +63,37 @@ export default function OwnerTasksView({ workers, tasks, addTask, deleteTask, la
     }
   };
 
-  const handleAssignImage = async (imageUrl) => {
+  const handleAssignImage = async (imageUrl, imageText) => {
     if (!targetWorker) {
       showToast(t('selectWorkerFirst'), 'warning');
       return;
     }
+    setLoading(true);
     try {
-      await addTask('', targetWorker, markImportant, null, imageUrl);
+      await addTask(imageText || '', targetWorker, markImportant, null, imageUrl);
       if (markImportant) setMarkImportant(false);
       showToast(`🖼️ Image task sent to ${targetWorker}`, 'success');
     } catch (err) {
       showToast(err.message || t('somethingWentWrong'), 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAssignDocument = async (documentUrl, documentName, documentText) => {
+    if (!targetWorker) {
+      showToast(t('selectWorkerFirst'), 'warning');
+      return;
+    }
+    setLoading(true);
+    try {
+      await addTask(documentText || '', targetWorker, markImportant, null, null, documentUrl, documentName);
+      if (markImportant) setMarkImportant(false);
+      showToast(`📄 Document task sent to ${targetWorker}`, 'success');
+    } catch (err) {
+      showToast(err.message || t('somethingWentWrong'), 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -127,6 +153,7 @@ export default function OwnerTasksView({ workers, tasks, addTask, deleteTask, la
           onSubmit={handleAssignTask}
           onAudioSubmit={handleAssignVoice}
           onImageSubmit={handleAssignImage}
+          onDocumentSubmit={handleAssignDocument}
           placeholder={targetWorker ? `${t('taskFor')} ${targetWorker}...` : t('selectWorkerFirst')}
         />
       </section>
@@ -207,10 +234,15 @@ export default function OwnerTasksView({ workers, tasks, addTask, deleteTask, la
                       {task.description && <TranslatedText text={task.description} targetLang={language} />}
                     </p>
                     {task.imageUrl && (
-                      <img src={task.imageUrl} alt="Attachment" style={{ width: '100%', maxWidth: '300px', height: 'auto', marginTop: '8px', borderRadius: '8px' }} />
+                      <img src={task.imageUrl} alt="Attachment" onClick={() => setLightboxSrc(task.imageUrl)} style={{ width: '100%', maxWidth: '300px', height: 'auto', marginTop: '8px', borderRadius: '8px', cursor: 'pointer' }} />
                     )}
                     {task.audioUrl && (
                       <audio controls src={task.audioUrl} style={{ width: '100%', height: '36px', marginTop: '8px', borderRadius: '8px' }} />
+                    )}
+                    {task.documentUrl && (
+                      <a href={task.documentUrl} onClick={(e) => { e.preventDefault(); window.open(task.documentUrl, window.Capacitor?.isNativePlatform() ? '_system' : '_blank'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '8px', padding: '8px 12px', background: 'rgba(0,0,0,0.05)', borderRadius: '8px', color: 'inherit', textDecoration: 'none', fontSize: '0.85rem' }}>
+                        📄 {task.documentName || 'Download Document'}
+                      </a>
                     )}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
@@ -277,10 +309,15 @@ export default function OwnerTasksView({ workers, tasks, addTask, deleteTask, la
                         </span>
                         <div><TranslatedText text={reply.text} targetLang={language} /></div>
                         {reply.imageUrl && (
-                          <img src={reply.imageUrl} alt="Reply Attachment" style={{ width: '100%', maxWidth: '200px', height: 'auto', marginTop: '4px', borderRadius: '6px' }} />
+                          <img src={reply.imageUrl} alt="Reply Attachment" onClick={() => setLightboxSrc(reply.imageUrl)} style={{ width: '100%', maxWidth: '200px', height: 'auto', marginTop: '4px', borderRadius: '6px', cursor: 'pointer' }} />
                         )}
                         {reply.audioUrl && (
                           <audio controls src={reply.audioUrl} style={{ width: '100%', height: '28px', marginTop: '4px', borderRadius: '6px' }} />
+                        )}
+                        {reply.documentUrl && (
+                          <a href={reply.documentUrl} onClick={(e) => { e.preventDefault(); window.open(reply.documentUrl, window.Capacitor?.isNativePlatform() ? '_system' : '_blank'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '4px', padding: '6px 10px', background: 'rgba(0,0,0,0.05)', borderRadius: '6px', color: 'inherit', textDecoration: 'none', fontSize: '0.8rem' }}>
+                            📄 {reply.documentName || 'Attached Document'}
+                          </a>
                         )}
                       </div>
                     ))}
@@ -321,6 +358,7 @@ export default function OwnerTasksView({ workers, tasks, addTask, deleteTask, la
           try { await deleteTask(id); } catch (err) { showToast(err.message || t('somethingWentWrong'), 'error'); }
         }}
       />
+      <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
     </>
   );
 }
