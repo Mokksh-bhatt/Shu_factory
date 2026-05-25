@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { Plus, Trash2, Save, Sparkles, Clipboard, Package } from 'lucide-react';
+import SearchableSelect from '../../common/SearchableSelect';
 
 export default function DailyProductionForm({ t }) {
   const [colours, setColours] = useState([]);
@@ -16,6 +17,8 @@ export default function DailyProductionForm({ t }) {
   const [pvaConsumed, setPvaConsumed] = useState('');
   
   const [coloursFired, setColoursFired] = useState([]);
+  const [actualRMs, setActualRMs] = useState({}); // Recipe overrides
+  const [extraRMs, setExtraRMs] = useState([]); // Manual additions
   
   const [consumables, setConsumables] = useState({
     boxes: '', cutPaper: '', gum: '', sheetsMade: '', 
@@ -57,7 +60,7 @@ export default function DailyProductionForm({ t }) {
       colour.recipe.forEach(ing => {
         const amount = (weight * ing.percentage) / 100;
         if (!consumptionMap[ing.rawMaterialId]) {
-          consumptionMap[ing.rawMaterialId] = { name: ing.name, total: 0 };
+          consumptionMap[ing.rawMaterialId] = { rawMaterialId: ing.rawMaterialId, name: ing.name, total: 0 };
         }
         consumptionMap[ing.rawMaterialId].total += amount;
       });
@@ -67,12 +70,49 @@ export default function DailyProductionForm({ t }) {
 
   const calculatedRMs = calculateRawMaterialConsumption();
 
+  const handleActualRMChange = (rmId, value) => {
+    setActualRMs({ ...actualRMs, [rmId]: value });
+  };
+
+  const addExtraRM = () => {
+    setExtraRMs([...extraRMs, { rawMaterialId: '', total: '' }]);
+  };
+
+  const updateExtraRM = (idx, field, value) => {
+    const updated = [...extraRMs];
+    updated[idx][field] = value;
+    setExtraRMs(updated);
+  };
+
+  const removeExtraRM = (idx) => {
+    const updated = [...extraRMs];
+    updated.splice(idx, 1);
+    setExtraRMs(updated);
+  };
+
   const handleSubmit = async () => {
     if (coloursFired.length === 0) return alert('Please add at least one colour fired.');
     
+    // Compile final raw materials list (merging actual overrides and extra manuals)
+    const finalRawMaterialsList = [
+      ...calculatedRMs.map(rm => ({
+        rawMaterialId: rm.rawMaterialId,
+        name: rm.name,
+        total: parseFloat(actualRMs[rm.rawMaterialId] !== undefined ? actualRMs[rm.rawMaterialId] : rm.total) || 0
+      })),
+      ...extraRMs.map(e => {
+        const rm = rawMaterials.find(r => r.id === e.rawMaterialId);
+        return {
+          rawMaterialId: e.rawMaterialId,
+          name: rm?.name || 'Manual Material',
+          total: parseFloat(e.total) || 0
+        };
+      }).filter(e => e.rawMaterialId && e.total > 0)
+    ];
+
     // Snapshot the current rates for historical accuracy
     const rmSnapshots = rawMaterials.reduce((acc, rm) => {
-      acc[rm.id] = { currentRate: rm.currentRate, unit: rm.unit, name: rm.name };
+      acc[rm.id] = { currentRate: rm.currentRate || 0, unit: rm.unit || 'Kgs', name: rm.name };
       return acc;
     }, {});
 
@@ -86,10 +126,10 @@ export default function DailyProductionForm({ t }) {
         return {
           ...cf,
           colourName: col?.name || '',
-          recipeSnapshot: col?.recipe || [] // Snapshot recipe
+          recipeSnapshot: col?.recipe || []
         };
       }),
-      calculatedRawMaterials: calculatedRMs,
+      calculatedRawMaterials: finalRawMaterialsList,
       consumables: {
         boxes: parseFloat(consumables.boxes) || 0,
         cutPaper: parseFloat(consumables.cutPaper) || 0,
@@ -100,15 +140,17 @@ export default function DailyProductionForm({ t }) {
         plasticBags: parseFloat(consumables.plasticBags) || 0,
       },
       rmRatesSnapshot: rmSnapshots,
-      status: 'PENDING_APPROVAL', // Needs Admin check
+      status: 'PENDING_APPROVAL',
       createdAt: serverTimestamp()
     };
 
     try {
       await addDoc(collection(db, 'dailyProductions'), payload);
-      alert('Daily Production Submitted for Approval!');
+      alert('Daily Production Log Submitted for Approval!');
       // Reset form
       setColoursFired([]);
+      setActualRMs({});
+      setExtraRMs([]);
       setChargeNumber('');
       setProject('');
       setPvaConsumed('');
@@ -135,17 +177,17 @@ export default function DailyProductionForm({ t }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '16px' }}>
           <div>
             <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Date</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} required style={{ width: '100%' }} />
           </div>
           <div>
             <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Project Name</label>
-            <input type="text" placeholder="e.g. Project Alpha" value={project} onChange={e => setProject(e.target.value)} />
+            <input type="text" placeholder="e.g. Project Alpha" value={project} onChange={e => setProject(e.target.value)} style={{ width: '100%' }} />
           </div>
         </div>
 
         <div>
           <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>PVA Consumed (Kgs)</label>
-          <input type="number" step="0.1" placeholder="0.0" value={pvaConsumed} onChange={e => setPvaConsumed(e.target.value)} />
+          <input type="number" step="0.1" placeholder="0.0" value={pvaConsumed} onChange={e => setPvaConsumed(e.target.value)} style={{ width: '100%' }} />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
@@ -193,7 +235,7 @@ export default function DailyProductionForm({ t }) {
               placeholder="Enter Charge Number" 
               value={chargeNumber} 
               onChange={e => setChargeNumber(e.target.value)} 
-              style={{ marginTop: '6px' }}
+              style={{ marginTop: '6px', width: '100%' }}
             />
           )}
         </div>
@@ -222,7 +264,8 @@ export default function DailyProductionForm({ t }) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              zIndex: 10
             }}
           >
             <Trash2 size={16} />
@@ -230,28 +273,32 @@ export default function DailyProductionForm({ t }) {
 
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Colour</label>
-            <select value={cf.colourId} onChange={e => updateColourFired(idx, 'colourId', e.target.value)}>
-              <option value="">Select Colour</option>
-              {colours.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <SearchableSelect
+              options={colours.map(c => ({ value: c.id, label: `${c.name} (${c.code || '-'})` }))}
+              value={cf.colourId}
+              onChange={val => updateColourFired(idx, 'colourId', val)}
+              placeholder="Search Colour..."
+            />
           </div>
 
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Size</label>
-            <select value={cf.sizeId} onChange={e => updateColourFired(idx, 'sizeId', e.target.value)}>
-              <option value="">Select Size</option>
-              {sizes.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
-            </select>
+            <SearchableSelect
+              options={sizes.map(s => ({ value: s.id, label: `${s.name} (${s.code || '-'})` }))}
+              value={cf.sizeId}
+              onChange={val => updateColourFired(idx, 'sizeId', val)}
+              placeholder="Search Size..."
+            />
           </div>
 
           <div>
             <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Charges</label>
-            <input type="number" placeholder="No. of Charges" value={cf.numberOfCharges} onChange={e => updateColourFired(idx, 'numberOfCharges', e.target.value)} />
+            <input type="number" placeholder="No. of Charges" value={cf.numberOfCharges} onChange={e => updateColourFired(idx, 'numberOfCharges', e.target.value)} style={{ width: '100%' }} />
           </div>
 
           <div>
             <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Total Wt (Kg)</label>
-            <input type="number" step="0.1" placeholder="Weight" value={cf.totalWeight} onChange={e => updateColourFired(idx, 'totalWeight', e.target.value)} />
+            <input type="number" step="0.1" placeholder="Weight" value={cf.totalWeight} onChange={e => updateColourFired(idx, 'totalWeight', e.target.value)} style={{ width: '100%' }} />
           </div>
         </div>
       ))}
@@ -279,23 +326,101 @@ export default function DailyProductionForm({ t }) {
         <Plus size={18} /> Add Colour Fired
       </button>
 
-      {/* AUTO CALCULATED RAW MATERIALS */}
-      {calculatedRMs.length > 0 && (
+      {/* DETAILED INTERACTIVE RAW MATERIALS LOGS */}
+      {(calculatedRMs.length > 0 || extraRMs.length > 0) && (
         <div className="card" style={{ marginBottom: '24px', background: 'rgba(99, 102, 241, 0.05)', border: '1px dashed #6366f1', borderRadius: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: '#818cf8' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', color: '#818cf8' }}>
             <Sparkles size={18} />
-            <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 'bold' }}>Live Consumption Estimation</h4>
+            <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 'bold' }}>Raw Material Consumption Adjustments</h4>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
-            {calculatedRMs.map((rm, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--surface-high)', paddingBottom: '6px', fontSize: '0.95rem' }}>
-                <span style={{ color: 'var(--on-surface)' }}>{rm.name}</span>
-                <strong style={{ color: '#818cf8' }}>{rm.total.toFixed(3)} Kgs</strong>
+          
+          {/* Estimated / Autocalculated */}
+          {calculatedRMs.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontWeight: 'bold' }}>Recipe Estimates (Override if needed)</span>
+              {calculatedRMs.map((rm, i) => {
+                const actualVal = actualRMs[rm.rawMaterialId] !== undefined ? actualRMs[rm.rawMaterialId] : rm.total.toFixed(3);
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', borderBottom: '1px solid var(--surface-high)', paddingBottom: '8px' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ color: 'var(--on-surface)', fontSize: '0.95rem', fontWeight: '600' }}>{rm.name}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)' }}>Estimated: {rm.total.toFixed(3)} Kgs</div>
+                    </div>
+                    <div style={{ width: '140px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <input 
+                        type="number" 
+                        step="0.001" 
+                        value={actualVal} 
+                        onChange={e => handleActualRMChange(rm.rawMaterialId, e.target.value)}
+                        style={{ padding: '6px 8px', fontSize: '0.9rem', textAlign: 'right', width: '100%' }}
+                      />
+                      <span style={{ fontSize: '0.85rem', color: 'var(--on-surface-variant)' }}>Kg</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Extra Manual Raw Materials */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: calculatedRMs.length > 0 ? '1px dashed var(--surface-high)' : 'none', paddingTop: calculatedRMs.length > 0 ? '16px' : '0' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontWeight: 'bold' }}>Extra Materials Logged (Unrelated to Recipes)</span>
+            
+            {extraRMs.map((e, idx) => (
+              <div key={idx} style={{ display: 'flex', gap: '10px', alignItems: 'center', background: 'var(--surface)', padding: '10px', borderRadius: '10px', border: '1px solid var(--surface-high)' }}>
+                <div style={{ flex: 2 }}>
+                  <SearchableSelect
+                    options={rawMaterials.map(rm => ({ value: rm.id, label: `${rm.name} (${rm.code || '-'})` }))}
+                    value={e.rawMaterialId}
+                    onChange={val => updateExtraRM(idx, 'rawMaterialId', val)}
+                    placeholder="Search material..."
+                  />
+                </div>
+                <div style={{ flex: 1.2, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <input
+                    type="number"
+                    step="0.001"
+                    placeholder="Qty"
+                    value={e.total}
+                    onChange={val => updateExtraRM(idx, 'total', val.target.value)}
+                    style={{ padding: '8px', fontSize: '0.9rem', textAlign: 'right', width: '100%' }}
+                  />
+                  <span style={{ fontSize: '0.8rem', color: 'var(--on-surface-variant)' }}>Kg</span>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => removeExtraRM(idx)}
+                  style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '4px' }}
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
             ))}
+
+            <button
+              type="button"
+              onClick={addExtraRM}
+              style={{
+                padding: '10px',
+                borderRadius: '8px',
+                background: 'rgba(99, 102, 241, 0.08)',
+                color: '#818cf8',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '0.85rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px'
+              }}
+            >
+              <Plus size={14} /> Log Extra Material Used
+            </button>
           </div>
-          <p style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)', marginTop: '12px', fontStyle: 'italic', margin: '12px 0 0 0' }}>
-            *Estimated based on Colour Recipe master configurations.
+
+          <p style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)', marginTop: '16px', fontStyle: 'italic', margin: '16px 0 0 0' }}>
+            *Recipe estimates automatically calculate, but you have 100% control to adjust or manually log materials.
           </p>
         </div>
       )}
@@ -317,6 +442,7 @@ export default function DailyProductionForm({ t }) {
                 placeholder="0"
                 value={consumables[key]} 
                 onChange={e => setConsumables({...consumables, [key]: e.target.value})} 
+                style={{ width: '100%' }}
               />
             </div>
           ))}

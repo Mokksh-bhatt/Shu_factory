@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../../firebase';
-import { Plus, Trash2, Edit, Database, Settings } from 'lucide-react';
+import { Plus, Trash2, Edit, Database, Settings, Check, X } from 'lucide-react';
+import SearchableSelect from '../../common/SearchableSelect';
 
 // Helper to generate next sequential code client-side
 const generateNextCode = (items, prefix) => {
@@ -92,6 +93,8 @@ export default function MasterDataAdmin({ t }) {
 function GenericMaster({ collectionName, fields, t }) {
   const [items, setItems] = useState([]);
   const [newItem, setNewItem] = useState({});
+  const [editingId, setEditingId] = useState(null);
+  const [editItem, setEditItem] = useState({});
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, collectionName), snap => {
@@ -118,6 +121,16 @@ function GenericMaster({ collectionName, fields, t }) {
       createdAt: serverTimestamp() 
     });
     setNewItem({});
+  };
+
+  const handleEditStart = (item) => {
+    setEditingId(item.id);
+    setEditItem(item);
+  };
+
+  const handleEditSave = async (id) => {
+    await updateDoc(doc(db, collectionName, id), { ...editItem });
+    setEditingId(null);
   };
 
   const handleDelete = async (id) => {
@@ -177,11 +190,49 @@ function GenericMaster({ collectionName, fields, t }) {
             {items.map(item => (
               <tr key={item.id} style={{ borderBottom: '1px solid var(--surface-high)' }}>
                 <td style={{ padding: '12px 8px', color: '#818cf8', fontWeight: 'bold' }}>{item.code || '-'}</td>
-                {fields.map(f => <td key={f.name} style={{ padding: '12px 8px', color: 'var(--on-surface)' }}>{item[f.name]}</td>)}
+                {fields.map(f => (
+                  <td key={f.name} style={{ padding: '8px' }}>
+                    {editingId === item.id ? (
+                      <input
+                        value={editItem[f.name] || ''}
+                        onChange={e => setEditItem({...editItem, [f.name]: e.target.value})}
+                        style={{
+                          width: '100%',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--surface-high)',
+                          background: 'var(--surface-high)',
+                          color: 'var(--on-surface)',
+                          fontSize: '0.95rem'
+                        }}
+                      />
+                    ) : (
+                      <span style={{ color: 'var(--on-surface)' }}>{item[f.name]}</span>
+                    )}
+                  </td>
+                ))}
                 <td style={{ padding: '12px 8px', textAlign: 'right' }}>
-                  <button onClick={() => handleDelete(item.id)} style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '4px' }}>
-                    <Trash2 size={16} />
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                    {editingId === item.id ? (
+                      <>
+                        <button onClick={() => handleEditSave(item.id)} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', padding: '4px' }}>
+                          <Check size={18} />
+                        </button>
+                        <button onClick={() => setEditingId(null)} style={{ background: 'none', border: 'none', color: 'var(--on-surface-variant)', cursor: 'pointer', padding: '4px' }}>
+                          <X size={18} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => handleEditStart(item)} style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', padding: '4px' }}>
+                          <Edit size={16} />
+                        </button>
+                        <button onClick={() => handleDelete(item.id)} style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '4px' }}>
+                          <Trash2 size={16} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -203,6 +254,8 @@ function GenericMaster({ collectionName, fields, t }) {
 function RawMaterialsMaster({ t }) {
   const [items, setItems] = useState([]);
   const [newItem, setNewItem] = useState({ name: '', unit: '', currentRate: '', group: '' });
+  const [editingId, setEditingId] = useState(null);
+  const [editItem, setEditItem] = useState({});
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'production_raw_materials'), snap => {
@@ -224,6 +277,21 @@ function RawMaterialsMaster({ t }) {
       createdAt: serverTimestamp() 
     });
     setNewItem({ name: '', unit: '', currentRate: '', group: '' });
+  };
+
+  const handleEditStart = (item) => {
+    setEditingId(item.id);
+    setEditItem(item);
+  };
+
+  const handleEditSave = async (id) => {
+    await updateDoc(doc(db, 'production_raw_materials', id), {
+      name: editItem.name,
+      group: editItem.group || 'Raw Material',
+      unit: editItem.unit,
+      currentRate: parseFloat(editItem.currentRate) || 0
+    });
+    setEditingId(null);
   };
 
   const handleDelete = async (id) => {
@@ -303,12 +371,88 @@ function RawMaterialsMaster({ t }) {
             {items.map(item => (
               <tr key={item.id} style={{ borderBottom: '1px solid var(--surface-high)' }}>
                 <td style={{ padding: '12px 8px', color: '#818cf8', fontWeight: 'bold' }}>{item.code || '-'}</td>
-                <td style={{ padding: '12px 8px', color: 'var(--on-surface)', fontWeight: '600' }}>{item.name}</td>
-                <td style={{ padding: '12px 8px', color: 'var(--on-surface-variant)', fontSize: '0.85rem' }}>{item.group || 'Raw Material'}</td>
-                <td style={{ padding: '12px 8px', color: 'var(--on-surface-variant)' }}>{item.unit}</td>
-                <td style={{ padding: '12px 8px', color: '#818cf8' }}>₹{item.currentRate?.toFixed(2)}</td>
+                
+                {/* Name */}
+                <td style={{ padding: '8px' }}>
+                  {editingId === item.id ? (
+                    <input
+                      value={editItem.name || ''}
+                      onChange={e => setEditItem({...editItem, name: e.target.value})}
+                      style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--surface-high)', background: 'var(--surface-high)', color: 'var(--on-surface)', fontWeight: '600', fontSize: '0.95rem' }}
+                    />
+                  ) : (
+                    <span style={{ color: 'var(--on-surface)', fontWeight: '600' }}>{item.name}</span>
+                  )}
+                </td>
+
+                {/* Group */}
+                <td style={{ padding: '8px' }}>
+                  {editingId === item.id ? (
+                    <select
+                      value={editItem.group || ''}
+                      onChange={e => setEditItem({...editItem, group: e.target.value})}
+                      style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--surface-high)', background: 'var(--surface-high)', color: 'var(--on-surface)', fontSize: '0.95rem' }}
+                    >
+                      <option value="Raw Material">Raw Material</option>
+                      <option value="Ceramic Stain">Ceramic Stain</option>
+                      <option value="Chemicals">Chemicals</option>
+                      <option value="Packing Material">Packing Material</option>
+                      <option value="Miscellenious">Miscellaneous</option>
+                    </select>
+                  ) : (
+                    <span style={{ color: 'var(--on-surface-variant)', fontSize: '0.85rem' }}>{item.group || 'Raw Material'}</span>
+                  )}
+                </td>
+
+                {/* Unit */}
+                <td style={{ padding: '8px' }}>
+                  {editingId === item.id ? (
+                    <input
+                      value={editItem.unit || ''}
+                      onChange={e => setEditItem({...editItem, unit: e.target.value})}
+                      style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--surface-high)', background: 'var(--surface-high)', color: 'var(--on-surface)', fontSize: '0.95rem' }}
+                    />
+                  ) : (
+                    <span style={{ color: 'var(--on-surface-variant)' }}>{item.unit}</span>
+                  )}
+                </td>
+
+                {/* Avg Rate */}
+                <td style={{ padding: '8px' }}>
+                  {editingId === item.id ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editItem.currentRate ?? ''}
+                      onChange={e => setEditItem({...editItem, currentRate: e.target.value})}
+                      style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--surface-high)', background: 'var(--surface-high)', color: 'var(--on-surface)', fontSize: '0.95rem' }}
+                    />
+                  ) : (
+                    <span style={{ color: '#818cf8' }}>₹{item.currentRate?.toFixed(2)}</span>
+                  )}
+                </td>
+
+                {/* Actions */}
                 <td style={{ padding: '12px 8px', textAlign: 'right' }}>
-                  <button onClick={() => handleDelete(item.id)} style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '4px' }}><Trash2 size={16} /></button>
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                    {editingId === item.id ? (
+                      <>
+                        <button onClick={() => handleEditSave(item.id)} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', padding: '4px' }}>
+                          <Check size={18} />
+                        </button>
+                        <button onClick={() => setEditingId(null)} style={{ background: 'none', border: 'none', color: 'var(--on-surface-variant)', cursor: 'pointer', padding: '4px' }}>
+                          <X size={18} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => handleEditStart(item)} style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', padding: '4px' }}>
+                          <Edit size={16} />
+                        </button>
+                        <button onClick={() => handleDelete(item.id)} style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '4px' }}><Trash2 size={16} /></button>
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -334,6 +478,8 @@ function ColoursMaster({ t }) {
   const [newColour, setNewColour] = useState({ name: '', recipe: [] });
   const [selectedRm, setSelectedRm] = useState('');
   const [selectedPercentage, setSelectedPercentage] = useState('');
+  
+  const [editingColourId, setEditingColourId] = useState(null);
 
   useEffect(() => {
     const unsubCol = onSnapshot(collection(db, 'production_colours'), snap => {
@@ -347,6 +493,13 @@ function ColoursMaster({ t }) {
 
   const addIngredient = () => {
     if (!selectedRm || !selectedPercentage) return;
+    
+    // Check if ingredient already in list to avoid duplicates
+    if (newColour.recipe.some(ing => ing.rawMaterialId === selectedRm)) {
+      alert('This material is already in the recipe.');
+      return;
+    }
+
     const rm = rawMaterials.find(r => r.id === selectedRm);
     setNewColour({
       ...newColour,
@@ -366,15 +519,45 @@ function ColoursMaster({ t }) {
     e.preventDefault();
     if (!newColour.name || newColour.recipe.length === 0) return;
     
-    // Auto-generate sequential color code
-    const code = generateNextCode(colours, 'col');
-    
-    await addDoc(collection(db, 'production_colours'), { 
-      name: newColour.name,
-      recipe: newColour.recipe,
-      code,
-      createdAt: serverTimestamp() 
-    });
+    // Validate that recipe percentage sums up to approximately 100% or is valid
+    const totalPct = newColour.recipe.reduce((sum, ing) => sum + ing.percentage, 0);
+    if (Math.abs(totalPct - 100) > 0.1) {
+      if (!confirm(`Warning: Recipe percentages total ${totalPct.toFixed(1)}% instead of 100%. Save anyway?`)) {
+        return;
+      }
+    }
+
+    if (editingColourId) {
+      // Edit mode: update existing document
+      await updateDoc(doc(db, 'production_colours', editingColourId), {
+        name: newColour.name,
+        recipe: newColour.recipe
+      });
+      setEditingColourId(null);
+      alert('Colour Recipe updated successfully!');
+    } else {
+      // Create mode
+      const code = generateNextCode(colours, 'col');
+      await addDoc(collection(db, 'production_colours'), { 
+        name: newColour.name,
+        recipe: newColour.recipe,
+        code,
+        createdAt: serverTimestamp() 
+      });
+      alert('Colour Recipe saved successfully!');
+    }
+    setNewColour({ name: '', recipe: [] });
+  };
+
+  const handleEditStart = (c) => {
+    setEditingColourId(c.id);
+    setNewColour({ name: c.name, recipe: c.recipe });
+    // Scroll to the top where form is located
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingColourId(null);
     setNewColour({ name: '', recipe: [] });
   };
 
@@ -385,7 +568,9 @@ function ColoursMaster({ t }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div className="card" style={{ border: '1px solid var(--surface-high)' }}>
-        <h3 style={{ fontSize: '1.1rem', color: '#818cf8', marginBottom: '16px', borderBottom: '1px solid var(--surface-high)', paddingBottom: '8px' }}>Add New Colour Recipe</h3>
+        <h3 style={{ fontSize: '1.1rem', color: '#818cf8', marginBottom: '16px', borderBottom: '1px solid var(--surface-high)', paddingBottom: '8px' }}>
+          {editingColourId ? 'Edit Colour Recipe' : 'Add New Colour Recipe'}
+        </h3>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
           <div>
@@ -400,11 +585,13 @@ function ColoursMaster({ t }) {
           <div style={{ border: '1px solid var(--surface-high)', padding: '12px', borderRadius: '12px', background: 'var(--surface-high)' }}>
             <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.8rem', color: 'var(--on-surface)', fontWeight: 'bold' }}>Add Ingredients</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <select value={selectedRm} onChange={e => setSelectedRm(e.target.value)}>
-                <option value="">Select Raw Material</option>
-                {rawMaterials.map(rm => <option key={rm.id} value={rm.id}>{rm.name}</option>)}
-              </select>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <SearchableSelect
+                options={rawMaterials.map(rm => ({ value: rm.id, label: `${rm.name} (${rm.code || '-'})` }))}
+                value={selectedRm}
+                onChange={setSelectedRm}
+                placeholder="Search raw material..."
+              />
+              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
                 <input 
                   type="number" step="0.01" placeholder="Percentage %" 
                   value={selectedPercentage} onChange={e => setSelectedPercentage(e.target.value)} 
@@ -433,7 +620,9 @@ function ColoursMaster({ t }) {
 
         {newColour.recipe.length > 0 && (
           <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Recipe Mix</label>
+            <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>
+              Recipe Mix (Total: {newColour.recipe.reduce((s, i) => s + i.percentage, 0).toFixed(1)}%)
+            </label>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {newColour.recipe.map((ing, idx) => (
                 <li key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--surface-high)', borderRadius: '8px' }}>
@@ -445,24 +634,45 @@ function ColoursMaster({ t }) {
           </div>
         )}
 
-        <button 
-          onClick={handleAddColour} 
-          style={{ 
-            width: '100%', 
-            padding: '12px',
-            background: 'linear-gradient(135deg, #4f46e5, #6366f1)',
-            color: 'white',
-            border: 'none',
-            borderRadius: '12px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            fontFamily: 'var(--font-display)',
-            boxShadow: '0 4px 12px rgba(79, 70, 229, 0.2)'
-          }} 
-          disabled={!newColour.name || newColour.recipe.length === 0}
-        >
-          Save Colour Recipe
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button 
+            onClick={handleAddColour} 
+            style={{ 
+              flex: 2, 
+              padding: '12px',
+              background: 'linear-gradient(135deg, #4f46e5, #6366f1)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '12px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-display)',
+              boxShadow: '0 4px 12px rgba(79, 70, 229, 0.2)'
+            }} 
+            disabled={!newColour.name || newColour.recipe.length === 0}
+          >
+            {editingColourId ? 'Update Colour Recipe' : 'Save Colour Recipe'}
+          </button>
+          {editingColourId && (
+            <button 
+              type="button"
+              onClick={handleCancelEdit} 
+              style={{ 
+                flex: 1, 
+                padding: '12px',
+                background: 'var(--surface-high)',
+                color: 'var(--on-surface)',
+                border: '1px solid var(--surface-high)',
+                borderRadius: '12px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-display)'
+              }}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </div>
 
       <h3 style={{ fontSize: '1.2rem', color: 'var(--on-background)', margin: '8px 0 0 0' }}>Existing Colours</h3>
@@ -473,7 +683,14 @@ function ColoursMaster({ t }) {
               <h4 style={{ margin: 0, color: 'var(--on-surface)', fontSize: '1.1rem' }}>
                 {c.name} <span style={{ color: '#818cf8', fontSize: '0.85rem', fontWeight: 'bold', marginLeft: '6px' }}>({c.code || '-'})</span>
               </h4>
-              <button onClick={() => handleDelete(c.id)} style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '4px' }}><Trash2 size={16} /></button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={() => handleEditStart(c)} style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', padding: '4px' }}>
+                  <Edit size={16} />
+                </button>
+                <button onClick={() => handleDelete(c.id)} style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '4px' }}>
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
             <table style={{ width: '100%', fontSize: '0.9rem' }}>
               <tbody>
