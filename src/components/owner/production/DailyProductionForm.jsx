@@ -17,7 +17,8 @@ export default function DailyProductionForm({ t }) {
   const [pvaConsumed, setPvaConsumed] = useState('');
   
   const [coloursFired, setColoursFired] = useState([]);
-  const [actualRMs, setActualRMs] = useState({}); // Recipe overrides
+  const [actualRMs, setActualRMs] = useState({}); // Actual inputs
+  const [overriddenRMs, setOverriddenRMs] = useState({}); // Tracking manual overrides
   const [extraRMs, setExtraRMs] = useState([]); // Manual additions
   
   // Real-time suggestions state derived from recent logs
@@ -126,8 +127,45 @@ export default function DailyProductionForm({ t }) {
 
   const calculatedRMs = calculateRawMaterialConsumption();
 
+  // Synchronize actual inputs with estimates dynamically unless manually overridden by the user
+  useEffect(() => {
+    setActualRMs(prev => {
+      const updated = { ...prev };
+      let changed = false;
+      
+      calculatedRMs.forEach(rm => {
+        const id = rm.rawMaterialId;
+        const estVal = rm.total.toFixed(3);
+        // If not manually overridden, keep in sync with live estimates
+        if (!overriddenRMs[id] && prev[id] !== estVal) {
+          updated[id] = estVal;
+          changed = true;
+        }
+      });
+      
+      // Clean up deleted ones
+      Object.keys(updated).forEach(id => {
+        if (!calculatedRMs.some(rm => rm.rawMaterialId === id)) {
+          delete updated[id];
+          changed = true;
+        }
+      });
+      
+      return changed ? updated : prev;
+    });
+  }, [calculatedRMs, overriddenRMs]);
+
   const handleActualRMChange = (rmId, value) => {
-    setActualRMs({ ...actualRMs, [rmId]: value });
+    setActualRMs(prev => ({ ...prev, [rmId]: value }));
+    setOverriddenRMs(prev => ({ ...prev, [rmId]: true }));
+  };
+
+  const resetRMOverride = (rmId) => {
+    setOverriddenRMs(prev => {
+      const updated = { ...prev };
+      delete updated[rmId];
+      return updated;
+    });
   };
 
   const addExtraRM = () => {
@@ -149,22 +187,37 @@ export default function DailyProductionForm({ t }) {
   const handleSubmit = async () => {
     if (coloursFired.length === 0) return alert('Please add at least one colour fired.');
     
-    // Compile final raw materials list (merging actual overrides and extra manuals)
-    const finalRawMaterialsList = [
-      ...calculatedRMs.map(rm => ({
+    // Compile and merge duplicate raw materials (actual overrides + manual extra logs)
+    const mergedMap = {};
+    
+    // 1. Add recipe auto-calculated / actual-adjusted materials
+    calculatedRMs.forEach(rm => {
+      const actualVal = actualRMs[rm.rawMaterialId] !== undefined ? actualRMs[rm.rawMaterialId] : rm.total;
+      const total = parseFloat(actualVal) || 0;
+      mergedMap[rm.rawMaterialId] = {
         rawMaterialId: rm.rawMaterialId,
         name: rm.name,
-        total: parseFloat(actualRMs[rm.rawMaterialId] !== undefined ? actualRMs[rm.rawMaterialId] : rm.total) || 0
-      })),
-      ...extraRMs.map(e => {
-        const rm = rawMaterials.find(r => r.id === e.rawMaterialId);
-        return {
+        total: total
+      };
+    });
+    
+    // 2. Merge manual extra materials
+    extraRMs.forEach(e => {
+      if (!e.rawMaterialId || !e.total) return;
+      const rm = rawMaterials.find(r => r.id === e.rawMaterialId);
+      const total = parseFloat(e.total) || 0;
+      if (mergedMap[e.rawMaterialId]) {
+        mergedMap[e.rawMaterialId].total += total;
+      } else {
+        mergedMap[e.rawMaterialId] = {
           rawMaterialId: e.rawMaterialId,
           name: rm?.name || 'Manual Material',
-          total: parseFloat(e.total) || 0
+          total: total
         };
-      }).filter(e => e.rawMaterialId && e.total > 0)
-    ];
+      }
+    });
+
+    const finalRawMaterialsList = Object.values(mergedMap).filter(rm => rm.total > 0);
 
     // Snapshot the current rates for historical accuracy
     const rmSnapshots = rawMaterials.reduce((acc, rm) => {
@@ -206,6 +259,7 @@ export default function DailyProductionForm({ t }) {
       // Reset form
       setColoursFired([]);
       setActualRMs({});
+      setOverriddenRMs({});
       setExtraRMs([]);
       setChargeNumber('');
       setProject('');
@@ -479,21 +533,49 @@ export default function DailyProductionForm({ t }) {
               <span style={{ fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontWeight: 'bold' }}>Recipe Estimates (Override if needed)</span>
               {calculatedRMs.map((rm, i) => {
                 const actualVal = actualRMs[rm.rawMaterialId] !== undefined ? actualRMs[rm.rawMaterialId] : rm.total.toFixed(3);
+                const isOverridden = overriddenRMs[rm.rawMaterialId];
                 return (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', borderBottom: '1px solid var(--surface-high)', paddingBottom: '8px' }}>
                     <div style={{ flex: 1 }}>
-                      <div style={{ color: 'var(--on-surface)', fontSize: '0.95rem', fontWeight: '600' }}>{rm.name}</div>
+                      <div style={{ color: 'var(--on-surface)', fontSize: '0.95rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {rm.name}
+                        {isOverridden && (
+                          <span style={{ fontSize: '0.7rem', color: '#f59e0b', background: 'rgba(245, 158, 11, 0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+                            Adjusted
+                          </span>
+                        )}
+                      </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)' }}>Estimated: {rm.total.toFixed(3)} Kgs</div>
                     </div>
-                    <div style={{ width: '140px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <input 
-                        type="number" 
-                        step="0.001" 
-                        value={actualVal} 
-                        onChange={e => handleActualRMChange(rm.rawMaterialId, e.target.value)}
-                        style={{ padding: '6px 8px', fontSize: '0.9rem', textAlign: 'right', width: '100%' }}
-                      />
-                      <span style={{ fontSize: '0.85rem', color: 'var(--on-surface-variant)' }}>Kg</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {isOverridden && (
+                        <button
+                          type="button"
+                          onClick={() => resetRMOverride(rm.rawMaterialId)}
+                          style={{
+                            fontSize: '0.7rem',
+                            padding: '4px 8px',
+                            background: 'rgba(99, 102, 241, 0.1)',
+                            color: '#818cf8',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          Reset
+                        </button>
+                      )}
+                      <div style={{ width: '130px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input 
+                          type="number" 
+                          step="0.001" 
+                          value={actualVal} 
+                          onChange={e => handleActualRMChange(rm.rawMaterialId, e.target.value)}
+                          style={{ padding: '6px 8px', fontSize: '0.9rem', textAlign: 'right', width: '100%' }}
+                        />
+                        <span style={{ fontSize: '0.85rem', color: 'var(--on-surface-variant)' }}>Kg</span>
+                      </div>
                     </div>
                   </div>
                 );
