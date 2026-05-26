@@ -157,6 +157,27 @@ export default function ProductionReports({ t, filterStatus }) {
                 ))}
               </div>
             </div>
+
+            {/* Consumables & Packaging */}
+            {prod.consumables && Object.values(prod.consumables).some(v => v > 0) && (
+              <div style={{ borderTop: '1px solid var(--surface-high)', paddingTop: '12px', marginTop: '12px' }}>
+                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontWeight: 'bold', marginBottom: '8px' }}>
+                  Consumables & Packaging
+                </span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {Object.entries(prod.consumables)
+                    .filter(([_, qty]) => qty > 0)
+                    .map(([key, qty]) => {
+                      const label = key.replace(/([A-Z])/g, ' $1').trim();
+                      return (
+                        <span key={key} style={{ background: 'rgba(99, 102, 241, 0.05)', border: '1px solid rgba(99, 102, 241, 0.15)', padding: '6px 10px', borderRadius: '8px', fontSize: '0.8rem', color: 'var(--on-surface)', textTransform: 'capitalize' }}>
+                          {label}: <strong style={{ color: '#818cf8' }}>{qty}</strong>
+                        </span>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
