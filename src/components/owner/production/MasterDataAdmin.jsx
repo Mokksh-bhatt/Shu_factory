@@ -4,6 +4,50 @@ import { db } from '../../../firebase';
 import { Plus, Trash2, Edit, Database, Settings, Check, X } from 'lucide-react';
 import SearchableSelect from '../../common/SearchableSelect';
 
+// Predefined catalog of common ceramic factory materials for auto-suggestions
+const STANDARD_MATERIALS_CATALOG = [
+  { name: 'Quartz Powder', group: 'Raw Material', unit: 'Kgs' },
+  { name: 'Felspar Powder', group: 'Raw Material', unit: 'Kgs' },
+  { name: 'Super China Clay', group: 'Raw Material', unit: 'Kgs' },
+  { name: 'Ball Clay Powder', group: 'Raw Material', unit: 'Kgs' },
+  { name: 'Barium Carbonate', group: 'Chemicals', unit: 'Kgs' },
+  { name: 'Zinc Oxide', group: 'Chemicals', unit: 'Kgs' },
+  { name: 'PVA', group: 'Chemicals', unit: 'Kgs' },
+  { name: 'Chrome Oxide', group: 'Chemicals', unit: 'Kgs' },
+  { name: 'Manganese Di Oxide', group: 'Chemicals', unit: 'Kgs' },
+  { name: 'Copper Oxy Chloride', group: 'Chemicals', unit: 'Kgs' },
+  { name: 'Black Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Fanta Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Coral Pink FCS Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'G Blue Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Red Oxide Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Yellow Oxide Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Cherry Red Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Havana Yellow FCS Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Lemmon Yellow Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Majenta Pink Burgandi Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Maruti Green RSB3CC Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Mettalic 7769 White Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Mettalic 7763 Yellow Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Mettalic 7741 Copper Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Pink Rose Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Red Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Red Brown BS4 Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'T Blue FCS Stain', group: 'Ceramic Stain', unit: 'Kgs' },
+  { name: 'Corrugated Boxes', group: 'Packing Material', unit: 'Nos' },
+  { name: 'Plastic Bags', group: 'Packing Material', unit: 'Nos' },
+  { name: 'Stretch Wrapping Roll', group: 'Packing Material', unit: 'Nos' },
+  { name: 'Corrugated Liners', group: 'Packing Material', unit: 'Nos' },
+  { name: 'Liquid Gum For Pasting', group: 'Packing Material', unit: 'Nos' },
+  { name: 'Paste Gum for Pasting', group: 'Packing Material', unit: 'Nos' },
+  { name: 'Kraft Paper Roll', group: 'Packing Material', unit: 'Nos' },
+  { name: 'Paper Cuttings', group: 'Packing Material', unit: 'Nos' },
+  { name: 'Strapping Rolls', group: 'Packing Material', unit: 'Nos' },
+  { name: 'Seals', group: 'Packing Material', unit: 'Nos' },
+  { name: 'Ceramic Pebbles', group: 'Miscellenious', unit: 'Kgs' },
+  { name: 'Ceramic Rollers', group: 'Miscellenious', unit: 'Nos' }
+];
+
 // Helper to generate next sequential code client-side
 const generateNextCode = (items, prefix) => {
   let maxNum = 0;
@@ -256,6 +300,7 @@ function RawMaterialsMaster({ t }) {
   const [newItem, setNewItem] = useState({ name: '', unit: '', currentRate: '', group: '' });
   const [editingId, setEditingId] = useState(null);
   const [editItem, setEditItem] = useState({});
+  const [suggestions, setSuggestions] = useState([]);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'production_raw_materials'), snap => {
@@ -267,9 +312,17 @@ function RawMaterialsMaster({ t }) {
   const handleAdd = async (e) => {
     e.preventDefault();
     if (!newItem.name) return;
+    
+    // Check if duplicate name exists (case-insensitive)
+    const exists = items.some(item => item.name?.trim().toLowerCase() === newItem.name.trim().toLowerCase());
+    if (exists) {
+      alert(`A raw material with the name "${newItem.name}" already exists!`);
+      return;
+    }
+
     const code = generateNextCode(items, 'raw');
     await addDoc(collection(db, 'production_raw_materials'), { 
-      name: newItem.name,
+      name: newItem.name.trim(),
       unit: newItem.unit,
       currentRate: parseFloat(newItem.currentRate) || 0,
       group: newItem.group || 'Raw Material',
@@ -277,6 +330,29 @@ function RawMaterialsMaster({ t }) {
       createdAt: serverTimestamp() 
     });
     setNewItem({ name: '', unit: '', currentRate: '', group: '' });
+    setSuggestions([]);
+  };
+
+  const handleNameChange = (val) => {
+    setNewItem({ ...newItem, name: val });
+    if (val.trim().length > 1) {
+      const filtered = STANDARD_MATERIALS_CATALOG.filter(m => 
+        m.name.toLowerCase().includes(val.toLowerCase())
+      ).slice(0, 5);
+      setSuggestions(filtered);
+    } else {
+      setSuggestions([]);
+    }
+  };
+
+  const selectSuggestion = (s) => {
+    setNewItem({
+      name: s.name,
+      unit: s.unit,
+      group: s.group,
+      currentRate: newItem.currentRate
+    });
+    setSuggestions([]);
   };
 
   const handleEditStart = (item) => {
@@ -286,7 +362,7 @@ function RawMaterialsMaster({ t }) {
 
   const handleEditSave = async (id) => {
     await updateDoc(doc(db, 'production_raw_materials', id), {
-      name: editItem.name,
+      name: editItem.name.trim(),
       group: editItem.group || 'Raw Material',
       unit: editItem.unit,
       currentRate: parseFloat(editItem.currentRate) || 0
@@ -301,9 +377,55 @@ function RawMaterialsMaster({ t }) {
   return (
     <div className="card" style={{ border: '1px solid var(--surface-high)' }}>
       <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
-        <div>
+        <div style={{ position: 'relative' }}>
           <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Material Name</label>
-          <input placeholder="e.g. Quartz Powder" value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} required />
+          <input 
+            placeholder="e.g. Quartz Powder (type to suggest)" 
+            value={newItem.name} 
+            onChange={e => handleNameChange(e.target.value)} 
+            required 
+            style={{ width: '100%' }}
+          />
+          {suggestions.length > 0 && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              zIndex: 1000,
+              background: 'var(--surface)',
+              border: '1px solid var(--surface-high)',
+              borderRadius: '8px',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+              marginTop: '4px',
+              maxHeight: '200px',
+              overflowY: 'auto'
+            }}>
+              {suggestions.map((s, i) => (
+                <div
+                  key={i}
+                  onClick={() => selectSuggestion(s)}
+                  style={{
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    borderBottom: i < suggestions.length - 1 ? '1px solid var(--surface-high)' : 'none',
+                    color: 'var(--on-surface)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-high)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <strong style={{ color: '#818cf8' }}>{s.name}</strong>
+                  <span style={{ fontSize: '0.75rem', background: 'rgba(99, 102, 241, 0.1)', padding: '2px 8px', borderRadius: '4px', color: 'var(--on-surface-variant)' }}>
+                    {s.group} ({s.unit})
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <div>
@@ -530,16 +652,23 @@ function ColoursMaster({ t }) {
     if (editingColourId) {
       // Edit mode: update existing document
       await updateDoc(doc(db, 'production_colours', editingColourId), {
-        name: newColour.name,
+        name: newColour.name.trim(),
         recipe: newColour.recipe
       });
       setEditingColourId(null);
       alert('Colour Recipe updated successfully!');
     } else {
+      // Check for duplicate name
+      const exists = colours.some(col => col.name?.trim().toLowerCase() === newColour.name.trim().toLowerCase());
+      if (exists) {
+        alert(`A colour recipe with the name "${newColour.name}" already exists!`);
+        return;
+      }
+
       // Create mode
       const code = generateNextCode(colours, 'col');
       await addDoc(collection(db, 'production_colours'), { 
-        name: newColour.name,
+        name: newColour.name.trim(),
         recipe: newColour.recipe,
         code,
         createdAt: serverTimestamp() 

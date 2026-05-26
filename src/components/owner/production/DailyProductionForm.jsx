@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, serverTimestamp, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { Plus, Trash2, Save, Sparkles, Clipboard, Package } from 'lucide-react';
 import SearchableSelect from '../../common/SearchableSelect';
@@ -20,6 +20,11 @@ export default function DailyProductionForm({ t }) {
   const [actualRMs, setActualRMs] = useState({}); // Recipe overrides
   const [extraRMs, setExtraRMs] = useState([]); // Manual additions
   
+  // Real-time suggestions state derived from recent logs
+  const [recentProjects, setRecentProjects] = useState([]);
+  const [nextSuggestedCharge, setNextSuggestedCharge] = useState('');
+  const [frequentFires, setFrequentFires] = useState([]);
+
   const [consumables, setConsumables] = useState({
     boxes: '', cutPaper: '', gum: '', sheetsMade: '', 
     kraftPaper: '', stretchFilm: '', plasticBags: ''
@@ -31,6 +36,57 @@ export default function DailyProductionForm({ t }) {
     const u3 = onSnapshot(collection(db, 'production_raw_materials'), s => setRawMaterials(s.docs.map(d => ({id: d.id, ...d.data()}))));
     return () => { u1(); u2(); u3(); };
   }, []);
+
+  // Fetch recent log history to extract smart suggestions
+  useEffect(() => {
+    const qLogs = query(collection(db, 'dailyProductions'), orderBy('createdAt', 'desc'), limit(30));
+    const unsubLogs = onSnapshot(qLogs, snap => {
+      const logs = snap.docs.map(d => d.data());
+      
+      // 1. Extract unique recent projects
+      const uniqueProjects = Array.from(new Set(logs.map(l => l.project).filter(Boolean))).slice(0, 4);
+      setRecentProjects(uniqueProjects);
+      
+      // 2. Predict next sequential ball mill charge number
+      const lastChargeLog = logs.find(l => l.ballMill?.chargeNumber);
+      if (lastChargeLog) {
+        const lastNum = lastChargeLog.ballMill.chargeNumber;
+        const digitsMatch = lastNum.match(/\d+/);
+        if (digitsMatch) {
+          const num = parseInt(digitsMatch[0], 10);
+          const nextSuggested = lastNum.replace(digitsMatch[0], num + 1);
+          setNextSuggestedCharge(nextSuggested);
+        } else {
+          setNextSuggestedCharge('');
+        }
+      } else {
+        setNextSuggestedCharge('');
+      }
+      
+      // 3. Find most frequent colour + size configurations
+      const counts = {};
+      logs.forEach(log => {
+        if (log.coloursFired) {
+          log.coloursFired.forEach(cf => {
+            if (cf.colourId && cf.sizeId) {
+              const key = `${cf.colourId}_${cf.sizeId}`;
+              counts[key] = (counts[key] || 0) + 1;
+            }
+          });
+        }
+      });
+      
+      const sortedFires = Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([key]) => {
+          const [colourId, sizeId] = key.split('_');
+          return { colourId, sizeId };
+        });
+      setFrequentFires(sortedFires);
+    });
+    return unsubLogs;
+  }, [colours, sizes]);
 
   const addColourFired = () => {
     setColoursFired([...coloursFired, { colourId: '', sizeId: '', numberOfCharges: '', totalWeight: '' }]);
@@ -182,6 +238,30 @@ export default function DailyProductionForm({ t }) {
           <div>
             <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Project Name</label>
             <input type="text" placeholder="e.g. Project Alpha" value={project} onChange={e => setProject(e.target.value)} style={{ width: '100%' }} />
+            {recentProjects.length > 0 && (
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--on-surface-variant)', display: 'flex', alignItems: 'center' }}>Recent:</span>
+                {recentProjects.map((p, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setProject(p)}
+                    style={{
+                      fontSize: '0.7rem',
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--surface-high)',
+                      background: 'rgba(99, 102, 241, 0.05)',
+                      color: '#818cf8',
+                      cursor: 'pointer',
+                      fontWeight: '500'
+                    }}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -231,12 +311,34 @@ export default function DailyProductionForm({ t }) {
             </button>
           </div>
           {ballMillYes && (
-            <input 
-              placeholder="Enter Charge Number" 
-              value={chargeNumber} 
-              onChange={e => setChargeNumber(e.target.value)} 
-              style={{ marginTop: '6px', width: '100%' }}
-            />
+            <div style={{ marginTop: '6px' }}>
+              <input 
+                placeholder="Enter Charge Number" 
+                value={chargeNumber} 
+                onChange={e => setChargeNumber(e.target.value)} 
+                style={{ width: '100%' }}
+              />
+              {nextSuggestedCharge && (
+                <div style={{ marginTop: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setChargeNumber(nextSuggestedCharge)}
+                    style={{
+                      fontSize: '0.75rem',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--surface-high)',
+                      background: 'rgba(16, 185, 129, 0.08)',
+                      color: '#10b981',
+                      cursor: 'pointer',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    Suggest Next: {nextSuggestedCharge}
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -246,6 +348,43 @@ export default function DailyProductionForm({ t }) {
         <h3 style={{ fontSize: '1.2rem', color: 'var(--on-background)', margin: 0 }}>Colours Fired</h3>
         <span style={{ fontSize: '0.8rem', color: 'var(--on-surface-variant)' }}>({coloursFired.length} Fired)</span>
       </div>
+
+      {/* Popular Configurations Quick-Add Pills */}
+      {frequentFires.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', background: 'var(--surface-high)', padding: '12px', borderRadius: '12px', border: '1px solid var(--surface-high)' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)', fontWeight: 'bold' }}>Quick Add Popular Configurations:</span>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {frequentFires.map((f, i) => {
+              const col = colours.find(c => c.id === f.colourId);
+              const sz = sizes.find(s => s.id === f.sizeId);
+              if (!col || !sz) return null;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setColoursFired([...coloursFired, { colourId: f.colourId, sizeId: f.sizeId, numberOfCharges: '1', totalWeight: '' }])}
+                  style={{
+                    fontSize: '0.75rem',
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--surface-high)',
+                    background: 'var(--surface)',
+                    color: 'var(--on-surface)',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    transition: 'all 0.15s ease',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = '#818cf8'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--surface-high)'}
+                >
+                  + {col.name} ({sz.name})
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {coloursFired.map((cf, idx) => (
         <div key={idx} className="card" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px', border: '1px solid var(--surface-high)', position: 'relative', paddingTop: '40px' }}>
