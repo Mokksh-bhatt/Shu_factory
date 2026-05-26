@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { db } from '../../../firebase';
-import { CheckCircle, Clock, Trash2, Calendar, FileText } from 'lucide-react';
+import { CheckCircle, Clock, Trash2, Calendar, FileText, RefreshCw } from 'lucide-react';
 
 export default function ProductionReports({ t, filterStatus }) {
   const [productions, setProductions] = useState([]);
+  const [recalculatingId, setRecalculatingId] = useState(null);
 
   useEffect(() => {
     const q = query(collection(db, 'dailyProductions'), orderBy('date', 'desc'));
@@ -26,6 +27,84 @@ export default function ProductionReports({ t, filterStatus }) {
     }
   };
 
+  const recalculateProduction = async (prod) => {
+    setRecalculatingId(prod.id);
+    try {
+      // 1. Fetch colours master list
+      const coloursSnap = await getDocs(collection(db, 'production_colours'));
+      const coloursMap = new Map();
+      coloursSnap.forEach(d => coloursMap.set(d.id, d.data()));
+
+      // 2. Fetch raw materials master list
+      const rmSnap = await getDocs(collection(db, 'production_raw_materials'));
+      const rmMap = new Map();
+      rmSnap.forEach(d => rmMap.set(d.id, d.data()));
+
+      const coloursFired = prod.coloursFired || [];
+      const validColoursFired = coloursFired.filter(cf => cf.colourId && cf.totalWeight);
+      
+      if (validColoursFired.length === 0) {
+        alert('No valid colours fired in this log to recalculate.');
+        setRecalculatingId(null);
+        return;
+      }
+
+      // Calculate aggregated raw material consumption
+      const consumptionMap = {};
+      
+      validColoursFired.forEach(cf => {
+        // Find recipe either from snapshot or from live colours master
+        let recipe = cf.recipeSnapshot || [];
+        if (recipe.length === 0) {
+          const liveCol = coloursMap.get(cf.colourId);
+          recipe = liveCol?.recipe || [];
+        }
+        
+        if (recipe.length === 0) {
+          return;
+        }
+        
+        const weight = parseFloat(cf.totalWeight) || 0;
+        recipe.forEach(ing => {
+          const amount = (weight * ing.percentage) / 100;
+          if (!consumptionMap[ing.rawMaterialId]) {
+            let name = ing.name;
+            if (!name) {
+              const liveRm = rmMap.get(ing.rawMaterialId);
+              name = liveRm?.name || 'Unknown Material';
+            }
+            consumptionMap[ing.rawMaterialId] = {
+              rawMaterialId: ing.rawMaterialId,
+              name: name,
+              total: 0
+            };
+          }
+          consumptionMap[ing.rawMaterialId].total += amount;
+        });
+      });
+      
+      const correctedList = Object.values(consumptionMap).filter(rm => rm.total > 0);
+      
+      if (correctedList.length === 0) {
+        alert('Recalculation yielded no raw material consumption.');
+        setRecalculatingId(null);
+        return;
+      }
+
+      // Update in Firestore
+      await updateDoc(doc(db, 'dailyProductions', prod.id), {
+        calculatedRawMaterials: correctedList
+      });
+
+      alert('Successfully recalculated and updated raw material consumption!');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to recalculate: ' + err.message);
+    } finally {
+      setRecalculatingId(null);
+    }
+  };
+
   // Filter based on prop if provided
   const filtered = filterStatus 
     ? productions.filter(p => p.status === filterStatus)
@@ -33,6 +112,16 @@ export default function ProductionReports({ t, filterStatus }) {
 
   return (
     <div style={{ maxWidth: '600px', margin: '0 auto', paddingBottom: '40px' }}>
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .spin-animation {
+          animation: spin 1s linear infinite;
+        }
+      `}</style>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
         <div style={{ background: 'linear-gradient(135deg, #4f46e5, #6366f1)', color: 'white', padding: '8px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <FileText size={24} />
@@ -96,6 +185,27 @@ export default function ProductionReports({ t, filterStatus }) {
                 )}
                 
                 <button 
+                  onClick={() => recalculateProduction(prod)} 
+                  disabled={recalculatingId === prod.id}
+                  style={{ 
+                    background: 'rgba(99, 102, 241, 0.1)', 
+                    border: 'none', 
+                    color: '#818cf8', 
+                    borderRadius: '8px', 
+                    padding: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    opacity: recalculatingId === prod.id ? 0.6 : 1
+                  }}
+                  title="Recalculate Consumption"
+                  aria-label="Recalculate Consumption"
+                >
+                  <RefreshCw size={16} className={recalculatingId === prod.id ? "spin-animation" : ""} />
+                </button>
+
+                <button 
                   onClick={() => deleteProduction(prod.id)} 
                   style={{ 
                     background: 'rgba(239, 68, 68, 0.1)', 
@@ -133,7 +243,7 @@ export default function ProductionReports({ t, filterStatus }) {
             <div style={{ marginBottom: '16px' }}>
               <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontWeight: 'bold', marginBottom: '6px' }}>Colours Fired</span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {(prod.coloursFired || []).map((cf, idx) => (
+                {(prod.coloursFired || []).filter(cf => cf.colourId && cf.totalWeight).map((cf, idx) => (
                   <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', borderBottom: '1px solid var(--surface-high)', paddingBottom: '4px' }}>
                     <span style={{ color: 'var(--on-surface)' }}>{cf.colourName || 'Unknown Colour'}</span>
                     <span style={{ color: 'var(--on-surface-variant)' }}>
