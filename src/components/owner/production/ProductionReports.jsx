@@ -14,10 +14,79 @@ export default function ProductionReports({ t, filterStatus }) {
     });
     return unsub;
   }, []);
-
   const approveProduction = async (id) => {
-    if (confirm('Approve this daily production? This will finalize the consumption.')) {
-      await updateDoc(doc(db, 'dailyProductions', id), { status: 'APPROVED' });
+    if (!confirm('Approve this daily production? This will finalize the consumption.')) return;
+    
+    try {
+      // Find the production log
+      const prod = productions.find(p => p.id === id);
+      if (!prod) return;
+
+      // 1. Fetch colours master list
+      const coloursSnap = await getDocs(collection(db, 'production_colours'));
+      const coloursMap = new Map();
+      coloursSnap.forEach(d => coloursMap.set(d.id, d.data()));
+
+      // 2. Fetch raw materials master list
+      const rmSnap = await getDocs(collection(db, 'production_raw_materials'));
+      const rmMap = new Map();
+      rmSnap.forEach(d => rmMap.set(d.id, d.data()));
+
+      const coloursFired = prod.coloursFired || [];
+      const updatedColoursFired = coloursFired.map(cf => {
+        if (!cf.colourId) return cf;
+        // If snapshot is missing, freeze it with the live recipe as of today (day of approval)
+        let recipe = cf.recipeSnapshot || [];
+        if (recipe.length === 0) {
+          const liveCol = coloursMap.get(cf.colourId);
+          recipe = liveCol?.recipe || [];
+        }
+        return {
+          ...cf,
+          recipeSnapshot: recipe
+        };
+      });
+
+      const validColoursFired = updatedColoursFired.filter(cf => cf.colourId && cf.totalWeight);
+
+      // Calculate final raw material consumption
+      const consumptionMap = {};
+      validColoursFired.forEach(cf => {
+        const recipe = cf.recipeSnapshot || [];
+        const weight = parseFloat(cf.totalWeight) || 0;
+        
+        recipe.forEach(ing => {
+          const amount = (weight * ing.percentage) / 100;
+          if (!consumptionMap[ing.rawMaterialId]) {
+            let name = ing.name;
+            if (!name) {
+              const liveRm = rmMap.get(ing.rawMaterialId);
+              name = liveRm?.name || 'Unknown Material';
+            }
+            consumptionMap[ing.rawMaterialId] = {
+              rawMaterialId: ing.rawMaterialId,
+              name: name,
+              total: 0
+            };
+          }
+          consumptionMap[ing.rawMaterialId].total += amount;
+        });
+      });
+
+      const finalizedRawMaterials = Object.values(consumptionMap).filter(rm => rm.total > 0);
+
+      // Update document in Firestore
+      await updateDoc(doc(db, 'dailyProductions', id), {
+        coloursFired: updatedColoursFired,
+        calculatedRawMaterials: finalizedRawMaterials,
+        status: 'APPROVED',
+        approvedAt: new Date()
+      });
+
+      alert('Daily Production Log Approved and Consumption Finalized!');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to approve daily production: ' + err.message);
     }
   };
 
