@@ -58,5 +58,8 @@ service cloud.firestore {
     match /dailyProductions/{docId} {
       allow read, write: if signedIn();
     }
+    match /inventory_transactions/{docId} {
+      allow read, write: if signedIn();
+    }
   }
 }
