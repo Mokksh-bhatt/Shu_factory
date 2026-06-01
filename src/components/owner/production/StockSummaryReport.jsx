@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { Plus, Trash2, Printer, Calendar, Filter, Loader, RefreshCw, FileSpreadsheet, ChevronDown, ChevronUp, AlertCircle, ArrowUpRight, ArrowDownRight } from 'lucide-react';
@@ -9,6 +9,7 @@ export default function StockSummaryReport({ t }) {
   const [productions, setProductions] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [includePending, setIncludePending] = useState(true);
 
   // Period States
   const [periodType, setPeriodType] = useState('yearly'); // 'daily', 'monthly', 'yearly', 'custom'
@@ -34,7 +35,7 @@ export default function StockSummaryReport({ t }) {
       setRawMaterials(s.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    const u2 = onSnapshot(query(collection(db, 'dailyProductions'), where('status', '==', 'APPROVED')), s => {
+    const u2 = onSnapshot(collection(db, 'dailyProductions'), s => {
       setProductions(s.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
@@ -84,6 +85,14 @@ export default function StockSummaryReport({ t }) {
     return { start: startStr, end: endStr };
   }, [periodType, selectedDate, selectedMonth, selectedYear, customStart, customEnd]);
 
+  // Filter daily productions based on approval state toggle
+  const filteredProductions = useMemo(() => {
+    return productions.filter(p => {
+      if (!includePending && p.status !== 'APPROVED') return false;
+      return true;
+    });
+  }, [productions, includePending]);
+
   // dynamic stock calculations
   const ledgerReport = useMemo(() => {
     if (rawMaterials.length === 0) return [];
@@ -97,49 +106,64 @@ export default function StockSummaryReport({ t }) {
 
       // 1. Transactions before start (to compute dynamic opening stock)
       const prevTransactions = transactions.filter(t => t.rawMaterialId === id && t.date < start);
-      const prevOpenStock = prevTransactions.filter(t => t.type === 'OPENING').reduce((sum, t) => sum + (t.quantity || 0), 0);
-      const prevInwards = prevTransactions.filter(t => t.type === 'INWARD').reduce((sum, t) => sum + (t.quantity || 0), 0);
       
-      // Consumption before start (APPROVED daily productions before start)
-      let prevOutwards = 0;
-      productions.forEach(p => {
+      const prevOpenQty = prevTransactions.filter(t => t.type === 'OPENING').reduce((sum, t) => sum + (t.quantity || 0), 0);
+      const prevOpenVal = prevTransactions.filter(t => t.type === 'OPENING').reduce((sum, t) => sum + (t.value || 0), 0);
+      
+      const prevInwardQty = prevTransactions.filter(t => t.type === 'INWARD').reduce((sum, t) => sum + (t.quantity || 0), 0);
+      const prevInwardVal = prevTransactions.filter(t => t.type === 'INWARD').reduce((sum, t) => sum + (t.value || 0), 0);
+      
+      // Consumption before start
+      let prevOutwardQty = 0;
+      filteredProductions.forEach(p => {
         if (p.date < start && p.calculatedRawMaterials) {
           const matched = p.calculatedRawMaterials.find(item => item.rawMaterialId === id);
           if (matched) {
-            prevOutwards += parseFloat(matched.total) || 0;
+            prevOutwardQty += parseFloat(matched.total) || 0;
           }
         }
       });
 
-      // Calculated Opening Balance for period = Initial Opening + Inwards before - Outwards before
-      const openingQty = prevOpenStock + prevInwards - prevOutwards;
-      const openingVal = openingQty * rate;
+      // Running average rate before period start
+      const totalPrevQty = prevOpenQty + prevInwardQty;
+      const totalPrevVal = prevOpenVal + prevInwardVal;
+      const prevAvgRate = totalPrevQty > 0 ? totalPrevVal / totalPrevQty : rate;
+      const prevOutwardVal = prevOutwardQty * prevAvgRate;
+
+      // Dynamic Opening Balance at start of period = Inwards before + Opening before - Consumed before
+      const openingQty = prevOpenQty + prevInwardQty - prevOutwardQty;
+      const openingVal = prevOpenQty + prevInwardQty > 0 ? prevOpenVal + prevInwardVal - prevOutwardVal : 0;
+      const openingRate = openingQty > 0 ? openingVal / openingQty : rate;
 
       // 2. Transactions WITHIN period
       const currentTransactions = transactions.filter(t => t.rawMaterialId === id && t.date >= start && t.date <= end);
       
-      // Inwards in period
+      const periodOpenQty = currentTransactions.filter(t => t.type === 'OPENING').reduce((sum, t) => sum + (t.quantity || 0), 0);
+      const periodOpenVal = currentTransactions.filter(t => t.type === 'OPENING').reduce((sum, t) => sum + (t.value || 0), 0);
+
       const inwardsQty = currentTransactions.filter(t => t.type === 'INWARD').reduce((sum, t) => sum + (t.quantity || 0), 0);
       const inwardsVal = currentTransactions.filter(t => t.type === 'INWARD').reduce((sum, t) => sum + (t.value || 0), 0);
-      
-      // Period opening adjustment (if they set a starting stock inside the period, add it to inwards or adjust opening)
-      const periodOpenAdjustmentQty = currentTransactions.filter(t => t.type === 'OPENING').reduce((sum, t) => sum + (t.quantity || 0), 0);
-      const periodOpenAdjustmentVal = periodOpenAdjustmentQty * rate;
 
-      // Final dynamic Opening calculation incorporating any adjustments inside the period as well
-      const adjustedOpeningQty = openingQty + periodOpenAdjustmentQty;
-      const adjustedOpeningVal = openingVal + periodOpenAdjustmentVal;
+      // Total adjusted opening balance
+      const adjustedOpeningQty = openingQty + periodOpenQty;
+      const adjustedOpeningVal = openingVal + periodOpenVal;
+      const adjustedOpeningRate = adjustedOpeningQty > 0 ? adjustedOpeningVal / adjustedOpeningQty : rate;
+
+      // Weighted average calculation for current period
+      const totalAvailableQty = adjustedOpeningQty + inwardsQty;
+      const totalAvailableVal = adjustedOpeningVal + inwardsVal;
+      const periodAvgRate = totalAvailableQty > 0 ? totalAvailableVal / totalAvailableQty : rate;
 
       // 3. Outwards (consumptions) WITHIN period
       let outwardsQty = 0;
       let outwardsVal = 0;
-      productions.forEach(p => {
+      filteredProductions.forEach(p => {
         if (p.date >= start && p.date <= end && p.calculatedRawMaterials) {
           const matched = p.calculatedRawMaterials.find(item => item.rawMaterialId === id);
           if (matched) {
             const qty = parseFloat(matched.total) || 0;
-            // Get rate at time of production or live rate
-            const prodRate = p.rmRatesSnapshot?.[id]?.currentRate ?? rate;
+            // Get rate snapshot fallback correctly using || instead of ?? to avoid 0 valuation
+            const prodRate = p.rmRatesSnapshot?.[id]?.currentRate || periodAvgRate;
             outwardsQty += qty;
             outwardsVal += qty * prodRate;
           }
@@ -147,9 +171,9 @@ export default function StockSummaryReport({ t }) {
       });
 
       // 4. Closing Balance
-      const closingQty = adjustedOpeningQty + inwardsQty - outwardsQty;
-      const closingVal = adjustedOpeningQty * rate + inwardsVal - outwardsVal; 
-      const closingRate = closingQty !== 0 ? Math.abs(closingVal / closingQty) : rate;
+      const closingQty = totalAvailableQty - outwardsQty;
+      const closingVal = totalAvailableVal - outwardsVal;
+      const closingRate = closingQty > 0 ? closingVal / closingQty : periodAvgRate;
 
       return {
         id,
@@ -157,13 +181,13 @@ export default function StockSummaryReport({ t }) {
         code: rm.code || 'raw---',
         group: rm.group || 'Raw Material',
         unit: rm.unit || 'Kgs',
-        opening: { qty: adjustedOpeningQty, rate, val: adjustedOpeningVal },
+        opening: { qty: adjustedOpeningQty, rate: adjustedOpeningRate, val: adjustedOpeningVal },
         inwards: { qty: inwardsQty, rate: inwardsQty > 0 ? inwardsVal / inwardsQty : rate, val: inwardsVal },
-        outwards: { qty: outwardsQty, rate: outwardsQty > 0 ? outwardsVal / outwardsQty : rate, val: outwardsVal },
+        outwards: { qty: outwardsQty, rate: outwardsQty > 0 ? outwardsVal / outwardsQty : periodAvgRate, val: outwardsVal },
         closing: { qty: closingQty, rate: closingRate, val: closingVal }
       };
     });
-  }, [rawMaterials, productions, transactions, dateRange]);
+  }, [rawMaterials, filteredProductions, transactions, dateRange]);
 
   // Group ledger report by raw material category/group
   const groupedReport = useMemo(() => {
@@ -256,7 +280,14 @@ export default function StockSummaryReport({ t }) {
     <div style={{ maxWidth: '100%', paddingBottom: '40px' }} className="no-select">
       {/* Styles for printing and custom Tally appearance */}
       <style>{`
+        .only-print {
+          display: none !important;
+        }
+        
         @media print {
+          .only-print {
+            display: block !important;
+          }
           body * {
             visibility: hidden;
             background: #ffffff !important;
@@ -283,8 +314,8 @@ export default function StockSummaryReport({ t }) {
           .tally-table th, .tally-table td {
             border: 1px solid #000000 !important;
             color: #000000 !important;
-            font-size: 8pt !important;
-            padding: 4px 6px !important;
+            font-size: 7.5pt !important;
+            padding: 2px 4px !important;
           }
           .tally-group-row {
             background-color: #f2f2f2 !important;
@@ -570,7 +601,23 @@ export default function StockSummaryReport({ t }) {
         </div>
 
         {/* Dynamic Period Pickers */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--on-surface-variant)', fontWeight: '600', cursor: 'pointer', userSelect: 'none', marginRight: '8px' }}>
+            <input
+              type="checkbox"
+              checked={includePending}
+              onChange={e => setIncludePending(e.target.checked)}
+              style={{
+                width: '16px',
+                height: '16px',
+                cursor: 'pointer',
+                accentColor: '#10b981'
+              }}
+            />
+            Include Pending Review Logs
+          </label>
+
           {periodType === 'daily' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Calendar size={16} style={{ color: 'var(--on-surface-variant)' }} />
@@ -632,7 +679,7 @@ export default function StockSummaryReport({ t }) {
 
       {/* PRINT ENVELOPE HEADER (Visible only on printing) */}
       <div id="print-area">
-        <div style={{ display: 'none' }} className="only-print">
+        <div className="only-print">
           <div style={{ textAlign: 'center', marginBottom: '24px', borderBottom: '2px solid #000000', paddingBottom: '16px' }}>
             <h1 style={{ margin: '0 0 4px 0', fontSize: '18pt', fontWeight: 'bold', textTransform: 'uppercase', color: '#000000' }}>SHON CERAMICS PVT LTD</h1>
             <p style={{ margin: '0 0 12px 0', fontSize: '10pt', color: '#000000' }}>159, GIDC, MAKARPURA, VADODARA-390010 GUJARAT</p>
@@ -682,7 +729,7 @@ export default function StockSummaryReport({ t }) {
               </thead>
               <tbody>
                 {groupedReport.map(group => (
-                  <window key={group.name} style={{ display: 'contents' }}>
+                  <Fragment key={group.name}>
                     {/* Stock Group Header */}
                     <tr className="tally-group-row">
                       <td style={{ textAlign: 'left', fontWeight: 'bold' }}>{group.name.toUpperCase()}</td>
@@ -726,7 +773,7 @@ export default function StockSummaryReport({ t }) {
                         <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{item.closing.qty !== 0 ? `₹${item.closing.val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₹0.00'}</td>
                       </tr>
                     ))}
-                  </window>
+                  </Fragment>
                 ))}
 
                 {/* Grand Total Row */}
