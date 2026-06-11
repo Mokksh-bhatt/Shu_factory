@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
-import { collection, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { Plus, Trash2, Printer, Calendar, Filter, Loader, RefreshCw, FileSpreadsheet, ChevronDown, ChevronUp, AlertCircle, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import SearchableSelect from '../../common/SearchableSelect';
@@ -8,9 +8,47 @@ export default function StockSummaryReport({ t }) {
   const [rawMaterials, setRawMaterials] = useState([]);
   const [productions, setProductions] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [colours, setColours] = useState([]);
   const [loading, setLoading] = useState(true);
   const [includePending, setIncludePending] = useState(true);
 
+  // TEMPORARY DB UPDATE: Populate default consumables as Raw Materials
+  useEffect(() => {
+    const populateConsumables = async () => {
+      try {
+        console.log("STARTING CONSUMABLE MIGRATION");
+        const rmSnap = await getDocs(collection(db, 'production_raw_materials'));
+        const existingRMs = rmSnap.docs.map(d => d.data().name?.toLowerCase());
+        
+        const defaultConsumables = [
+          { name: 'Corrugated Boxes', group: 'Packing Material', unit: 'Nos' },
+          { name: 'Paper Cuttings', group: 'Packing Material', unit: 'Kgs' },
+          { name: 'Kraft paper Roll', group: 'Packing Material', unit: 'Kgs' },
+          { name: 'Stretch wrapping Roll', group: 'Packing Material', unit: 'Nos' },
+          { name: 'Plastic bags', group: 'Packing Material', unit: 'Nos' },
+          { name: 'Liquid Gum For Pasting', group: 'Packing Material', unit: 'Kgs' }
+        ];
+
+        for (const item of defaultConsumables) {
+          if (!existingRMs.includes(item.name.toLowerCase())) {
+            console.log("Adding missing consumable:", item.name);
+            await addDoc(collection(db, 'production_raw_materials'), {
+              name: item.name,
+              group: item.group,
+              unit: item.unit,
+              currentRate: 0,
+              isConsumable: true,
+              createdAt: serverTimestamp()
+            });
+          }
+        }
+        console.log("CONSUMABLE MIGRATION SUCCESSFUL!");
+      } catch (err) {
+        console.error("MIGRATION ERROR", err);
+      }
+    };
+    populateConsumables();
+  }, []);
   // Period States
   const [periodType, setPeriodType] = useState('yearly'); // 'daily', 'monthly', 'yearly', 'custom'
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -44,7 +82,11 @@ export default function StockSummaryReport({ t }) {
       setLoading(false);
     });
 
-    return () => { u1(); u2(); u3(); };
+    const u4 = onSnapshot(collection(db, 'production_colours'), s => {
+      setColours(s.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => { u1(); u2(); u3(); u4(); };
   }, []);
 
   // Set default rate when material is selected in form
@@ -85,6 +127,48 @@ export default function StockSummaryReport({ t }) {
     return { start: startStr, end: endStr };
   }, [periodType, selectedDate, selectedMonth, selectedYear, customStart, customEnd]);
 
+  // Helper to dynamically calculate unapproved raw materials consumption using current recipes
+  const getPendingRMs = (p) => {
+    const consumptionMap = {};
+    const validColoursFired = (p.coloursFired || []).filter(cf => cf.colourId && cf.totalWeight);
+    
+    validColoursFired.forEach(cf => {
+      const col = colours.find(c => c.id === cf.colourId);
+      if (!col) return;
+      const recipe = col.recipe || [];
+      const weight = parseFloat(cf.totalWeight) || 0;
+      
+      recipe.forEach(ing => {
+        const amount = (weight * ing.percentage) / 100;
+        if (!consumptionMap[ing.rawMaterialId]) {
+          consumptionMap[ing.rawMaterialId] = {
+            rawMaterialId: ing.rawMaterialId,
+            name: ing.name || 'Unknown Material',
+            total: 0
+          };
+        }
+        consumptionMap[ing.rawMaterialId].total += amount;
+      });
+    });
+
+    if (p.ballMill?.charge1300) {
+      const glassScrap = rawMaterials.find(r => r.name?.toLowerCase().trim() === 'glass scrap');
+      const glassId = glassScrap?.id || '3DfTCP8HWkcvetXrexOW';
+      const glassName = glassScrap?.name || 'Glass Scrap';
+      
+      if (!consumptionMap[glassId]) {
+        consumptionMap[glassId] = {
+          rawMaterialId: glassId,
+          name: glassName,
+          total: 0
+        };
+      }
+      consumptionMap[glassId].total += 1300;
+    }
+
+    return Object.values(consumptionMap);
+  };
+
   // Filter daily productions based on approval state toggle
   const filteredProductions = useMemo(() => {
     return productions.filter(p => {
@@ -110,17 +194,40 @@ export default function StockSummaryReport({ t }) {
       const prevOpenQty = prevTransactions.filter(t => t.type === 'OPENING').reduce((sum, t) => sum + (t.quantity || 0), 0);
       const prevOpenVal = prevTransactions.filter(t => t.type === 'OPENING').reduce((sum, t) => sum + (t.value || 0), 0);
       
-      const prevInwardQty = prevTransactions.filter(t => t.type === 'INWARD').reduce((sum, t) => sum + (t.quantity || 0), 0);
-      const prevInwardVal = prevTransactions.filter(t => t.type === 'INWARD').reduce((sum, t) => sum + (t.value || 0), 0);
+      let prevInwardQty = prevTransactions.filter(t => t.type === 'INWARD').reduce((sum, t) => sum + (t.quantity || 0), 0);
+      let prevInwardVal = prevTransactions.filter(t => t.type === 'INWARD').reduce((sum, t) => sum + (t.value || 0), 0);
       
+      // Dynamic Inward Production of Glass Powder before start
+      if (id === 'GVwNHuTfhnDjF6fpVGQg') {
+        filteredProductions.forEach(p => {
+          if (p.date < start && p.ballMill?.charge1300) {
+            prevInwardQty += 1240;
+            const prodRate = p.rmRatesSnapshot?.[id]?.currentRate || rate;
+            prevInwardVal += 1240 * prodRate;
+          }
+        });
+      }
+
       // Consumption before start
       let prevOutwardQty = 0;
       filteredProductions.forEach(p => {
-        if (p.date < start && p.calculatedRawMaterials) {
-          const matched = p.calculatedRawMaterials.find(item => item.rawMaterialId === id);
+        if (p.date < start) {
+          const rms = p.status === 'APPROVED' ? (p.calculatedRawMaterials || []) : getPendingRMs(p);
+          const matched = rms.find(item => item.rawMaterialId === id);
+          let qty = 0;
           if (matched) {
-            prevOutwardQty += parseFloat(matched.total) || 0;
+            qty = parseFloat(matched.total) || 0;
           }
+          // Dynamic correction for Glass Scrap (1240 -> 1300) if ball mill was run
+          if (id === '3DfTCP8HWkcvetXrexOW' && p.ballMill?.charge1300 && (qty === 1240 || qty === 0)) {
+            qty = 1300;
+          }
+          
+          const lcMatched = (p.loggedConsumables || []).find(lc => lc.rawMaterialId === id);
+          if (lcMatched) {
+            qty += parseFloat(lcMatched.total) || 0;
+          }
+          prevOutwardQty += qty;
         }
       });
 
@@ -141,8 +248,19 @@ export default function StockSummaryReport({ t }) {
       const periodOpenQty = currentTransactions.filter(t => t.type === 'OPENING').reduce((sum, t) => sum + (t.quantity || 0), 0);
       const periodOpenVal = currentTransactions.filter(t => t.type === 'OPENING').reduce((sum, t) => sum + (t.value || 0), 0);
 
-      const inwardsQty = currentTransactions.filter(t => t.type === 'INWARD').reduce((sum, t) => sum + (t.quantity || 0), 0);
-      const inwardsVal = currentTransactions.filter(t => t.type === 'INWARD').reduce((sum, t) => sum + (t.value || 0), 0);
+      let inwardsQty = currentTransactions.filter(t => t.type === 'INWARD').reduce((sum, t) => sum + (t.quantity || 0), 0);
+      let inwardsVal = currentTransactions.filter(t => t.type === 'INWARD').reduce((sum, t) => sum + (t.value || 0), 0);
+
+      // Dynamic Inward Production of Glass Powder WITHIN period
+      if (id === 'GVwNHuTfhnDjF6fpVGQg') {
+        filteredProductions.forEach(p => {
+          if (p.date >= start && p.date <= end && p.ballMill?.charge1300) {
+            inwardsQty += 1240;
+            const prodRate = p.rmRatesSnapshot?.[id]?.currentRate || rate;
+            inwardsVal += 1240 * prodRate;
+          }
+        });
+      }
 
       // Total adjusted opening balance
       const adjustedOpeningQty = openingQty + periodOpenQty;
@@ -158,15 +276,27 @@ export default function StockSummaryReport({ t }) {
       let outwardsQty = 0;
       let outwardsVal = 0;
       filteredProductions.forEach(p => {
-        if (p.date >= start && p.date <= end && p.calculatedRawMaterials) {
-          const matched = p.calculatedRawMaterials.find(item => item.rawMaterialId === id);
+        if (p.date >= start && p.date <= end) {
+          const rms = p.status === 'APPROVED' ? (p.calculatedRawMaterials || []) : getPendingRMs(p);
+          const matched = rms.find(item => item.rawMaterialId === id);
+          let qty = 0;
           if (matched) {
-            const qty = parseFloat(matched.total) || 0;
-            // Get rate snapshot fallback correctly using || instead of ?? to avoid 0 valuation
-            const prodRate = p.rmRatesSnapshot?.[id]?.currentRate || periodAvgRate;
-            outwardsQty += qty;
-            outwardsVal += qty * prodRate;
+            qty = parseFloat(matched.total) || 0;
           }
+          // Dynamic correction for Glass Scrap (1240 -> 1300) if ball mill was run
+          if (id === '3DfTCP8HWkcvetXrexOW' && p.ballMill?.charge1300 && (qty === 1240 || qty === 0)) {
+            qty = 1300;
+          }
+          
+          const lcMatched = (p.loggedConsumables || []).find(lc => lc.rawMaterialId === id);
+          if (lcMatched) {
+            qty += parseFloat(lcMatched.total) || 0;
+          }
+          
+          // Get rate snapshot fallback correctly using || instead of ?? to avoid 0 valuation
+          const prodRate = p.rmRatesSnapshot?.[id]?.currentRate || periodAvgRate;
+          outwardsQty += qty;
+          outwardsVal += qty * prodRate;
         }
       });
 
@@ -187,7 +317,7 @@ export default function StockSummaryReport({ t }) {
         closing: { qty: closingQty, rate: closingRate, val: closingVal }
       };
     });
-  }, [rawMaterials, filteredProductions, transactions, dateRange]);
+  }, [rawMaterials, filteredProductions, transactions, dateRange, colours]);
 
   // Group ledger report by raw material category/group
   const groupedReport = useMemo(() => {
@@ -203,7 +333,14 @@ export default function StockSummaryReport({ t }) {
       groups[g].totals.outwards += item.outwards.val;
       groups[g].totals.closing += item.closing.val;
     });
-    return Object.values(groups);
+
+    // Sort items alphabetically inside each group
+    Object.values(groups).forEach(grp => {
+      grp.items.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
+    });
+
+    // Sort groups alphabetically by name
+    return Object.values(groups).sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
   }, [ledgerReport]);
 
   // Grand Totals

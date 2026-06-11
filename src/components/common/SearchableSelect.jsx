@@ -1,18 +1,107 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, ChevronDown } from 'lucide-react';
 
 export default function SearchableSelect({ options, value, onChange, placeholder = 'Search...', style = {} }) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [dropUp, setDropUp] = useState(false);
   const containerRef = useRef(null);
 
+// Levenshtein distance helper for fuzzy matching
+function levenshteinDistance(s1, s2) {
+  const m = s1.length;
+  const n = s2.length;
+  const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (s1[i - 1] === s2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + 1);
+      }
+    }
+  }
+  return dp[m][n];
+}
+
+  // Sort options alphabetically by default (using numeric and base sensitivity)
+  const sortedOptions = useMemo(() => {
+    return [...options].sort((a, b) => 
+      (a.label || '').localeCompare(b.label || '', undefined, { numeric: true, sensitivity: 'base' })
+    );
+  }, [options]);
+
   // Find the label of the currently selected option
-  const selectedOption = options.find(opt => opt.value === value);
+  const selectedOption = sortedOptions.find(opt => opt.value === value);
   
-  // Filter options based on search query
-  const filteredOptions = options.filter(opt =>
-    opt.label.toLowerCase().includes(search.toLowerCase())
-  );
+  // Filter options based on search query with smart matching
+  const filteredOptions = useMemo(() => {
+    if (!search.trim() || search === selectedOption?.label) return sortedOptions;
+    
+    const normalizePhonetics = (s) => s
+      .replace(/g/g, 'j')
+      .replace(/y/g, 'i')
+      .replace(/ph/g, 'f')
+      .replace(/c/g, 's')
+      .replace(/x/g, 'ks')
+      .replace(/ee/g, 'i')
+      .replace(/oo/g, 'u')
+      .replace(/tt/g, 't')
+      .replace(/pp/g, 'p')
+      .replace(/ll/g, 'l')
+      .replace(/dd/g, 'd')
+      .replace(/mm/g, 'm')
+      .replace(/nn/g, 'n')
+      .replace(/ff/g, 'f')
+      .replace(/ss/g, 's')
+      .replace(/rr/g, 'r')
+      .replace(/bb/g, 'b');
+
+    const query = search.toLowerCase().trim();
+    const cleanQuery = query.replace(/[^a-z0-9]/g, '');
+    const queryWords = query.split(/[\s\-_,./()]+/).filter(Boolean).map(w => w.replace(/[^a-z0-9]/g, ''));
+    
+    if (queryWords.length === 0) return sortedOptions;
+
+    return sortedOptions.filter(opt => {
+      const label = (opt.label || '').toLowerCase();
+      const cleanLabel = label.replace(/[^a-z0-9]/g, '');
+      
+      // 1. Standard includes match
+      if (label.includes(query)) return true;
+      if (cleanLabel.includes(cleanQuery)) return true;
+      
+      // 2. Word-based fuzzy/phonetic matching
+      const labelWords = label.split(/[\s\-_,./()]+/).filter(Boolean).map(w => w.replace(/[^a-z0-9]/g, ''));
+      
+      return queryWords.every(qWord => {
+        if (qWord.length === 0) return true;
+        
+        // Substring / prefix check
+        const hasSubstringMatch = labelWords.some(lWord => lWord.includes(qWord) || qWord.includes(lWord));
+        if (hasSubstringMatch) return true;
+        
+        // Phonetic check
+        const normQ = normalizePhonetics(qWord);
+        const hasPhoneticMatch = labelWords.some(lWord => {
+          const normL = normalizePhonetics(lWord);
+          return normL.includes(normQ) || normQ.includes(normL);
+        });
+        if (hasPhoneticMatch) return true;
+        
+        // Levenshtein fuzzy check
+        const hasFuzzyMatch = labelWords.some(lWord => {
+          if (Math.abs(lWord.length - qWord.length) > 2) return false;
+          const dist = levenshteinDistance(lWord, qWord);
+          const threshold = qWord.length > 4 ? 2 : 1;
+          return dist <= threshold;
+        });
+        return hasFuzzyMatch;
+      });
+    });
+  }, [sortedOptions, search, selectedOption]);
 
   useEffect(() => {
     // Handle click outside to close dropdown
@@ -40,6 +129,25 @@ export default function SearchableSelect({ options, value, onChange, placeholder
   const handleFocus = () => {
     setIsOpen(true);
     setSearch(''); // Clear search on focus so user can see all options immediately
+    
+    // Check space below to determine if dropdown should open upwards
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      
+      // If less than 250px below and more space above, open upwards
+      if (spaceBelow < 250 && spaceAbove > spaceBelow) {
+        setDropUp(true);
+      } else {
+        setDropUp(false);
+      }
+
+      // Smooth scroll the input into view, particularly useful on mobile when keyboard opens
+      setTimeout(() => {
+        containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
   };
 
   return (
@@ -47,7 +155,7 @@ export default function SearchableSelect({ options, value, onChange, placeholder
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         <input
           type="text"
-          placeholder={selectedOption ? selectedOption.label : placeholder}
+          placeholder={selectedOption ? selectedOption.label : (placeholder || 'Type to search...')}
           value={search}
           onChange={e => setSearch(e.target.value)}
           onFocus={handleFocus}
@@ -71,11 +179,10 @@ export default function SearchableSelect({ options, value, onChange, placeholder
       {isOpen && (
         <div style={{
           position: 'absolute',
-          top: '100%',
+          ...(dropUp ? { bottom: '100%', marginBottom: '4px' } : { top: '100%', marginTop: '4px' }),
           left: 0,
           right: 0,
           zIndex: 1000,
-          marginTop: '4px',
           background: 'var(--surface)',
           border: '1px solid var(--surface-high)',
           borderRadius: '12px',

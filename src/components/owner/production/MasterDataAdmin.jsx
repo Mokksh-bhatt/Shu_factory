@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDocs, query } from 'firebase/firestore';
 import { db } from '../../../firebase';
-import { Plus, Trash2, Edit, Database, Settings, Check, X } from 'lucide-react';
+import { Plus, Trash2, Edit, Database, Settings, Check, X, Printer } from 'lucide-react';
 import SearchableSelect from '../../common/SearchableSelect';
 
 // Predefined catalog of common ceramic factory materials for auto-suggestions
@@ -231,7 +231,11 @@ function GenericMaster({ collectionName, fields, t }) {
             </tr>
           </thead>
           <tbody>
-            {items.map(item => (
+            {[...items].sort((a, b) => {
+              const valA = a.name || a.description || a.symbol || '';
+              const valB = b.name || b.description || b.symbol || '';
+              return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+            }).map(item => (
               <tr key={item.id} style={{ borderBottom: '1px solid var(--surface-high)' }}>
                 <td style={{ padding: '12px 8px', color: '#818cf8', fontWeight: 'bold' }}>{item.code || '-'}</td>
                 {fields.map(f => (
@@ -297,7 +301,7 @@ function GenericMaster({ collectionName, fields, t }) {
 // RAW MATERIALS MASTER
 function RawMaterialsMaster({ t }) {
   const [items, setItems] = useState([]);
-  const [newItem, setNewItem] = useState({ name: '', unit: '', currentRate: '', group: '' });
+  const [newItem, setNewItem] = useState({ name: '', unit: '', currentRate: '', group: '', isConsumable: false });
   const [editingId, setEditingId] = useState(null);
   const [editItem, setEditItem] = useState({});
   const [suggestions, setSuggestions] = useState([]);
@@ -326,10 +330,11 @@ function RawMaterialsMaster({ t }) {
       unit: newItem.unit,
       currentRate: parseFloat(newItem.currentRate) || 0,
       group: newItem.group || 'Raw Material',
+      isConsumable: !!newItem.isConsumable,
       code,
       createdAt: serverTimestamp() 
     });
-    setNewItem({ name: '', unit: '', currentRate: '', group: '' });
+    setNewItem({ name: '', unit: '', currentRate: '', group: '', isConsumable: false });
     setSuggestions([]);
   };
 
@@ -350,7 +355,8 @@ function RawMaterialsMaster({ t }) {
       name: s.name,
       unit: s.unit,
       group: s.group,
-      currentRate: newItem.currentRate
+      currentRate: newItem.currentRate,
+      isConsumable: newItem.isConsumable
     });
     setSuggestions([]);
   };
@@ -365,13 +371,51 @@ function RawMaterialsMaster({ t }) {
       name: editItem.name.trim(),
       group: editItem.group || 'Raw Material',
       unit: editItem.unit,
-      currentRate: parseFloat(editItem.currentRate) || 0
+      currentRate: parseFloat(editItem.currentRate) || 0,
+      isConsumable: !!editItem.isConsumable
     });
     setEditingId(null);
   };
 
   const handleDelete = async (id) => {
-    if (confirm('Are you sure?')) await deleteDoc(doc(db, 'production_raw_materials', id));
+    if (!confirm('Are you sure you want to delete this raw material?')) return;
+    
+    // Check if the raw material is used in any daily production
+    const prodDocs = await getDocs(query(collection(db, 'dailyProductions')));
+    let isUsed = false;
+    for (const d of prodDocs.docs) {
+      const data = d.data();
+      if (data.calculatedRawMaterials?.some(rm => rm.rawMaterialId === id)) {
+        isUsed = true;
+        break;
+      }
+      if (data.loggedConsumables?.some(rm => rm.rawMaterialId === id)) {
+        isUsed = true;
+        break;
+      }
+    }
+
+    if (isUsed) {
+      alert('Cannot delete this raw material because it is used in past production records. You can edit its name instead.');
+      return;
+    }
+
+    // Check if used in recipes
+    const colDocs = await getDocs(query(collection(db, 'production_colours')));
+    for (const d of colDocs.docs) {
+      const data = d.data();
+      if (data.recipe?.some(r => r.rawMaterialId === id)) {
+        isUsed = true;
+        break;
+      }
+    }
+
+    if (isUsed) {
+      alert('Cannot delete this raw material because it is used in a colour recipe. You can edit its name instead.');
+      return;
+    }
+
+    await deleteDoc(doc(db, 'production_raw_materials', id));
   };
 
   return (
@@ -453,6 +497,18 @@ function RawMaterialsMaster({ t }) {
             <option value="Miscellenious">Miscellaneous</option>
           </select>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <input 
+            type="checkbox" 
+            id="isConsumable"
+            checked={newItem.isConsumable || false} 
+            onChange={e => setNewItem({...newItem, isConsumable: e.target.checked})} 
+            style={{ width: '16px', height: '16px' }}
+          />
+          <label htmlFor="isConsumable" style={{ fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontWeight: '600', cursor: 'pointer' }}>
+            Is Consumable (Shows in Consumables section during Entry)
+          </label>
+        </div>
         <button 
           type="submit" 
           style={{ 
@@ -484,13 +540,14 @@ function RawMaterialsMaster({ t }) {
               <th style={{ padding: '10px 8px', width: '90px' }}>Code</th>
               <th style={{ padding: '10px 8px' }}>Name</th>
               <th style={{ padding: '10px 8px' }}>Group</th>
+              <th style={{ padding: '10px 8px' }}>Consumable</th>
               <th style={{ padding: '10px 8px' }}>Unit</th>
               <th style={{ padding: '10px 8px' }}>Avg Rate</th>
               <th style={{ padding: '10px 8px', width: '60px', textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {items.map(item => (
+            {[...items].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' })).map(item => (
               <tr key={item.id} style={{ borderBottom: '1px solid var(--surface-high)' }}>
                 <td style={{ padding: '12px 8px', color: '#818cf8', fontWeight: 'bold' }}>{item.code || '-'}</td>
                 
@@ -523,6 +580,22 @@ function RawMaterialsMaster({ t }) {
                     </select>
                   ) : (
                     <span style={{ color: 'var(--on-surface-variant)', fontSize: '0.85rem' }}>{item.group || 'Raw Material'}</span>
+                  )}
+                </td>
+
+                {/* Consumable Flag */}
+                <td style={{ padding: '8px' }}>
+                  {editingId === item.id ? (
+                    <input
+                      type="checkbox"
+                      checked={editItem.isConsumable || false}
+                      onChange={e => setEditItem({...editItem, isConsumable: e.target.checked})}
+                      style={{ width: '16px', height: '16px' }}
+                    />
+                  ) : (
+                    <span style={{ color: item.isConsumable ? '#10b981' : 'var(--on-surface-variant)', fontWeight: item.isConsumable ? 'bold' : 'normal' }}>
+                      {item.isConsumable ? 'Yes' : 'No'}
+                    </span>
                   )}
                 </td>
 
@@ -602,6 +675,33 @@ function ColoursMaster({ t }) {
   const [selectedPercentage, setSelectedPercentage] = useState('');
   
   const [editingColourId, setEditingColourId] = useState(null);
+  const [selectedColours, setSelectedColours] = useState({});
+  const [printingColours, setPrintingColours] = useState(null);
+
+  const handleToggleSelect = (id) => {
+    setSelectedColours(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
+  const handleSelectAll = (checked) => {
+    const next = {};
+    if (checked) {
+      colours.forEach(c => {
+        next[c.id] = true;
+      });
+    }
+    setSelectedColours(next);
+  };
+
+  const printFormulations = (coloursList) => {
+    if (!coloursList || coloursList.length === 0) return;
+    setPrintingColours(coloursList);
+    setTimeout(() => {
+      window.print();
+    }, 300);
+  };
 
   useEffect(() => {
     const unsubCol = onSnapshot(collection(db, 'production_colours'), snap => {
@@ -693,6 +793,98 @@ function ColoursMaster({ t }) {
   const handleDelete = async (id) => {
     if (confirm('Are you sure?')) await deleteDoc(doc(db, 'production_colours', id));
   };
+
+  if (printingColours) {
+    return (
+      <div className="print-report-container" style={{ padding: '20px', background: 'white', color: '#1e293b', minHeight: '100vh', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }}>
+        <style>{`
+          @media print {
+            body * {
+              visibility: hidden !important;
+            }
+            .print-report-container, .print-report-container * {
+              visibility: visible !important;
+            }
+            .print-report-container {
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 100%;
+              background: white !important;
+              color: #1e293b !important;
+              padding: 0 !important;
+              margin: 0 !important;
+            }
+            .no-print, .no-print * {
+              display: none !important;
+              visibility: hidden !important;
+            }
+            .recipe-card {
+              border-color: #cbd5e1 !important;
+              page-break-inside: avoid !important;
+            }
+          }
+        `}</style>
+        
+        {/* Print controls toolbar */}
+        <div className="no-print" style={{ display: 'flex', gap: '12px', marginBottom: '20px', padding: '12px', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--surface-high)', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: '0.9rem', color: 'var(--on-surface)', fontWeight: 'bold' }}>Print Preview</span>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button 
+              onClick={() => window.print()}
+              style={{ padding: '8px 16px', background: 'linear-gradient(135deg, #4f46e5, #6366f1)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              Trigger Print / Save PDF
+            </button>
+            <button 
+              onClick={() => setPrintingColours(null)}
+              style={{ padding: '8px 16px', background: 'var(--surface-high)', color: 'var(--on-surface)', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              Go Back
+            </button>
+          </div>
+        </div>
+
+        <div style={{ maxWidth: '800px', margin: '0 auto', background: 'white', color: '#1e293b', padding: '10px' }}>
+          <div style={{ textAlign: 'center', borderBottom: '2px solid #4f46e5', paddingBottom: '15px', marginBottom: '30px' }}>
+            <h1 style={{ margin: 0, fontSize: '24px', color: '#1e1b4b', letterSpacing: '0.5px' }}>Colour Formulation Recipes</h1>
+            <p style={{ margin: '6px 0 0 0', color: '#64748b', fontSize: '13px' }}>Shon Factory Master Database</p>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+            {printingColours.map((c, idx) => (
+              <div key={idx} className="recipe-card" style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '20px', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)', background: 'white', color: '#1e293b' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px', marginBottom: '15px' }}>
+                  <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#0f172a' }}>{c.name}</span>
+                  <span style={{ fontSize: '13px', color: '#4f46e5', fontWeight: 'bold', backgroundColor: '#e0e7ff', padding: '3px 8px', borderRadius: '4px' }}>Code: {c.code || '-'}</span>
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc' }}>
+                      <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', fontWeight: 'bold', color: '#475569', borderBottom: '1px solid #f1f5f9' }}>Raw Material / Ingredient</th>
+                      <th style={{ textAlign: 'right', padding: '8px 12px', fontSize: '11px', fontWeight: 'bold', color: '#475569', borderBottom: '1px solid #f1f5f9' }}>Percentage (%)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(c.recipe || []).map((r, rIdx) => (
+                      <tr key={rIdx}>
+                        <td style={{ padding: '8px 12px', fontSize: '13px', borderBottom: '1px solid #f1f5f9', color: '#1e293b' }}>{r.name}</td>
+                        <td style={{ padding: '8px 12px', fontSize: '13px', borderBottom: '1px solid #f1f5f9', textAlign: 'right', fontWeight: 'bold', color: '#4f46e5' }}>{r.percentage}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ textAlign: 'center', fontSize: '11px', color: '#94a3b8', marginTop: '50px', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+            Printed on {new Date().toLocaleDateString()} - Shu Factory Production Management
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -804,23 +996,95 @@ function ColoursMaster({ t }) {
         </div>
       </div>
 
-      <h3 style={{ fontSize: '1.2rem', color: 'var(--on-background)', margin: '8px 0 0 0' }}>Existing Colours</h3>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {colours.map(c => (
-          <div key={c.id} className="card" style={{ border: '1px solid var(--surface-high)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <h4 style={{ margin: 0, color: 'var(--on-surface)', fontSize: '1.1rem' }}>
-                {c.name} <span style={{ color: '#818cf8', fontSize: '0.85rem', fontWeight: 'bold', marginLeft: '6px' }}>({c.code || '-'})</span>
-              </h4>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => handleEditStart(c)} style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', padding: '4px' }}>
-                  <Edit size={16} />
-                </button>
-                <button onClick={() => handleDelete(c.id)} style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '4px' }}>
-                  <Trash2 size={16} />
-                </button>
-              </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', margin: '8px 0 0 0', gap: '12px' }}>
+        <h3 style={{ fontSize: '1.2rem', color: 'var(--on-background)', margin: 0 }}>Existing Colours</h3>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {colours.length > 0 && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--on-surface-variant)', cursor: 'pointer', marginRight: '6px' }}>
+              <input 
+                type="checkbox" 
+                checked={colours.length > 0 && colours.every(c => selectedColours[c.id])} 
+                onChange={e => handleSelectAll(e.target.checked)} 
+                style={{ width: '16px', height: '16px', accentColor: '#818cf8' }}
+              />
+              Select All
+            </label>
+          )}
+
+          <button
+            onClick={() => {
+              const toPrint = colours.filter(c => selectedColours[c.id]);
+              printFormulations(toPrint);
+            }}
+            disabled={!colours.some(c => selectedColours[c.id])}
+            style={{
+              padding: '6px 12px',
+              fontSize: '0.8rem',
+              fontWeight: 'bold',
+              border: 'none',
+              borderRadius: '8px',
+              background: colours.some(c => selectedColours[c.id]) ? 'rgba(99, 102, 241, 0.15)' : 'var(--surface-high)',
+              color: colours.some(c => selectedColours[c.id]) ? '#818cf8' : 'var(--on-surface-variant)',
+              cursor: colours.some(c => selectedColours[c.id]) ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            <Printer size={14} /> Print Selected
+          </button>
+
+          <button
+            onClick={() => printFormulations(colours)}
+            disabled={colours.length === 0}
+            style={{
+              padding: '6px 12px',
+              fontSize: '0.8rem',
+              fontWeight: 'bold',
+              border: 'none',
+              borderRadius: '8px',
+              background: colours.length > 0 ? 'linear-gradient(135deg, #4f46e5, #6366f1)' : 'var(--surface-high)',
+              color: colours.length > 0 ? 'white' : 'var(--on-surface-variant)',
+              cursor: colours.length > 0 ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            <Printer size={14} /> Print All
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+        {[...colours].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' })).map(c => (
+          <div key={c.id} className="card" style={{ border: '1px solid var(--surface-high)', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+            <div style={{ paddingTop: '4px' }}>
+              <input 
+                type="checkbox" 
+                checked={!!selectedColours[c.id]} 
+                onChange={() => handleToggleSelect(c.id)} 
+                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#818cf8' }}
+              />
             </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                <h4 style={{ margin: 0, color: 'var(--on-surface)', fontSize: '1.1rem' }}>
+                  {c.name} <span style={{ color: '#818cf8', fontSize: '0.85rem', fontWeight: 'bold', marginLeft: '6px' }}>({c.code || '-'})</span>
+                </h4>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => printFormulations([c])} style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', padding: '4px' }} title="Print formulation recipe">
+                    <Printer size={16} />
+                  </button>
+                  <button onClick={() => handleEditStart(c)} style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', padding: '4px' }}>
+                    <Edit size={16} />
+                  </button>
+                  <button onClick={() => handleDelete(c.id)} style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '4px' }}>
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
             <table style={{ width: '100%', fontSize: '0.9rem' }}>
               <tbody>
                 {c.recipe.map((r, i) => (
@@ -832,7 +1096,8 @@ function ColoursMaster({ t }) {
               </tbody>
             </table>
           </div>
-        ))}
+        </div>
+      ))}
         {colours.length === 0 && (
           <div className="card" style={{ textAlign: 'center', padding: '24px', color: 'var(--on-surface-variant)' }}>
             No colours added yet.
