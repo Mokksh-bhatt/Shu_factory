@@ -925,12 +925,14 @@ export default function DailyProductionForm({ t }) {
         </div>
       </div>
 
-      {/* ITEMS MANUFACTURED SECTION */}
+      {/* SEMI FINISHED & FINISHED ITEMS SECTION */}
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', border: '1px solid var(--surface-high)', marginBottom: '32px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#818cf8', marginBottom: '4px', borderBottom: '1px solid var(--surface-high)', paddingBottom: '8px' }}>
           <Package size={18} />
-          <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Items Manufactured</h3>
+          <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Semi Finished & Finished Items</h3>
         </div>
+        
+        {/* Semi Finished (Loose Tiles) */}
         <div>
           <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>
             Loose Tiles Mfg (SQMTR)
@@ -977,41 +979,40 @@ export default function DailyProductionForm({ t }) {
             *Calculated as total of colour-wise weight / 10.76 (Default: {(totalColourWeight / 10.76).toFixed(2)} Sqmtr)
           </span>
         </div>
-      </div>
 
-      {/* FINISHED MATERIAL SECTION */}
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', border: '1px solid var(--surface-high)', marginBottom: '32px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#818cf8', marginBottom: '4px', borderBottom: '1px solid var(--surface-high)', paddingBottom: '8px' }}>
-          <Package size={18} />
-          <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Finished Material (Sqmtr)</h3>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.75rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Unglazed Mosaic Tiles</label>
-            <input 
-              type="number" step="0.01" placeholder="0.00"
-              value={finishedMaterials.unglazedSqmtr} 
-              onChange={e => setFinishedMaterials({...finishedMaterials, unglazedSqmtr: e.target.value})} 
-              style={{ width: '100%' }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.75rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Glazed Mosaic Tiles</label>
-            <input 
-              type="number" step="0.01" placeholder="0.00"
-              value={finishedMaterials.glazedSqmtr} 
-              onChange={e => setFinishedMaterials({...finishedMaterials, glazedSqmtr: e.target.value})} 
-              style={{ width: '100%' }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.75rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Glass Mosaic Tiles</label>
-            <input 
-              type="number" step="0.01" placeholder="0.00"
-              value={finishedMaterials.glassMosaicSqmtr} 
-              onChange={e => setFinishedMaterials({...finishedMaterials, glassMosaicSqmtr: e.target.value})} 
-              style={{ width: '100%' }}
-            />
+        {/* Finished Material */}
+        <div style={{ marginTop: '12px', borderTop: '1px dashed var(--surface-high)', paddingTop: '16px' }}>
+          <label style={{ display: 'block', marginBottom: '12px', fontSize: '0.9rem', color: 'var(--on-surface)', fontWeight: '600' }}>
+            Finished Material Packed (Sqmtr)
+          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.75rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Unglazed Mosaic Tiles</label>
+              <input 
+                type="number" step="0.01" placeholder="0.00"
+                value={finishedMaterials.unglazedSqmtr} 
+                onChange={e => setFinishedMaterials({...finishedMaterials, unglazedSqmtr: e.target.value})} 
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.75rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Glazed Mosaic Tiles</label>
+              <input 
+                type="number" step="0.01" placeholder="0.00"
+                value={finishedMaterials.glazedSqmtr} 
+                onChange={e => setFinishedMaterials({...finishedMaterials, glazedSqmtr: e.target.value})} 
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.75rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Glass Mosaic Tiles</label>
+              <input 
+                type="number" step="0.01" placeholder="0.00"
+                value={finishedMaterials.glassMosaicSqmtr} 
+                onChange={e => setFinishedMaterials({...finishedMaterials, glassMosaicSqmtr: e.target.value})} 
+                style={{ width: '100%' }}
+              />
+            </div>
           </div>
         </div>
       </div>

@@ -23,17 +23,13 @@ export default function MonthlyProductionGrid() {
 
   const daysArray = useMemo(() => Array.from({ length: daysInMonth }, (_, i) => i + 1), [daysInMonth]);
 
-  // Aggregate matrix based strictly on requested layout
+  // Aggregate matrix dynamically
   const matrixData = useMemo(() => {
     const data = {
       ballMill: Array(daysInMonth).fill(''),
       glassPowderMfg: Array(daysInMonth).fill(0),
-      blackStain: Array(daysInMonth).fill(0),
-      glassScrap: Array(daysInMonth).fill(0),
-      glassPowderConsumed: Array(daysInMonth).fill(0),
-      boxes: Array(daysInMonth).fill(0),
-      pva: Array(daysInMonth).fill(0),
-      cutPaper: Array(daysInMonth).fill(0),
+      rawMaterials: {}, // dynamic: { "Name": [0,0,0...] }
+      consumables: {},  // dynamic: { "Name": [0,0,0...] }
       looseTileMfg: Array(daysInMonth).fill(0),
       sheetsMade: Array(daysInMonth).fill(0),
       looseTileConsumed: Array(daysInMonth).fill(0),
@@ -61,54 +57,57 @@ export default function MonthlyProductionGrid() {
         data.glassPowderMfg[dayIdx] += 1240;
       }
 
-      // Helper to sum material by name keywords
-      const getRMQty = (keywords) => {
-        let total = 0;
-        const check = (name) => keywords.some(k => name.toLowerCase().includes(k.toLowerCase()));
-        
-        (log.calculatedRawMaterials || []).forEach(rm => {
-          if (check(rm.name)) total += parseFloat(rm.total) || 0;
-        });
-        (log.loggedConsumables || []).forEach(lc => {
-          if (check(lc.name)) total += parseFloat(lc.total) || 0;
-        });
-        return total;
+      const addToGroup = (groupObj, name, qty) => {
+        if (!name) return;
+        const key = name.trim();
+        if (!groupObj[key]) groupObj[key] = Array(daysInMonth).fill(0);
+        groupObj[key][dayIdx] += parseFloat(qty) || 0;
       };
 
       // 2. RAW MATERIAL CONSUMED
-      data.blackStain[dayIdx] += getRMQty(['Black Stain', 'Balck Stain']);
-      data.glassScrap[dayIdx] += getRMQty(['Glass Scrap']);
-      data.glassPowderConsumed[dayIdx] += getRMQty(['Glass Powder']);
+      (log.calculatedRawMaterials || []).forEach(rm => {
+        addToGroup(data.rawMaterials, rm.name, rm.total);
+      });
 
       // 3. CONSUMABLES CONSUMED
-      data.boxes[dayIdx] += getRMQty(['Boxes', 'Corrugated']);
-      data.pva[dayIdx] += (parseFloat(log.pvaConsumed) || 0) + getRMQty(['PVA']);
-      data.cutPaper[dayIdx] += getRMQty(['Cut Paper', 'Paper Cuttings', 'Cut Papper']);
-
-      // Old legacy consumables structure fallback
-      if (log.consumables) {
-        data.boxes[dayIdx] += parseFloat(log.consumables.boxes) || 0;
-        data.cutPaper[dayIdx] += parseFloat(log.consumables.cutPaper) || 0;
-        data.pva[dayIdx] += parseFloat(log.consumables.pva) || 0;
-        data.sheetsMade[dayIdx] += parseFloat(log.consumables.sheetsMade) || 0;
+      // New format (Array of objects with name)
+      if (Array.isArray(log.loggedConsumables)) {
+        log.loggedConsumables.forEach(lc => {
+          addToGroup(data.consumables, lc.name, lc.total);
+        });
+      } 
+      // Old legacy fallback format
+      else if (log.consumables) {
+        addToGroup(data.consumables, 'Corrugated Boxes', log.consumables.boxes);
+        addToGroup(data.consumables, 'Paper Cuttings', log.consumables.cutPaper);
+        addToGroup(data.consumables, 'PVA', log.consumables.pva);
+        addToGroup(data.consumables, 'Sheets', log.consumables.sheetsMade);
+      }
+      
+      // PVA is also explicitly logged
+      if (log.pvaConsumed) {
+        addToGroup(data.consumables, 'PVA', log.pvaConsumed);
       }
 
-      // Also check if Sheets Made is logged as an extra material
-      data.sheetsMade[dayIdx] += getRMQty(['Sheets made', 'Sheets']);
+      // Sheets Made fallback logic
+      const sheetsFromConsumables = data.consumables['Sheets'] ? data.consumables['Sheets'][dayIdx] : 0;
+      data.sheetsMade[dayIdx] += sheetsFromConsumables;
 
       // 4. SEMI FINISH AND FINISHED ITEMS
       data.looseTileMfg[dayIdx] += parseFloat(log.looseTilesMfgSqmtr) || 0;
-      
-      const currentSheets = data.sheetsMade[dayIdx];
-      if (currentSheets > 0) {
-        // Recalculate loose tile consumed for the day based on total sheets
-        data.looseTileConsumed[dayIdx] = (currentSheets / 10.76) * 1.02;
-      }
 
       if (log.finishedMaterials) {
-        data.glassMosaicPacked[dayIdx] += parseFloat(log.finishedMaterials.glassMosaicSqmtr) || 0;
-        data.unglazedMosaicPacked[dayIdx] += parseFloat(log.finishedMaterials.unglazedSqmtr) || 0;
-        data.glazedMosaicPacked[dayIdx] += parseFloat(log.finishedMaterials.glazedSqmtr) || 0;
+        const glass = parseFloat(log.finishedMaterials.glassMosaicSqmtr) || 0;
+        const unglazed = parseFloat(log.finishedMaterials.unglazedSqmtr) || 0;
+        const glazed = parseFloat(log.finishedMaterials.glazedSqmtr) || 0;
+        
+        data.glassMosaicPacked[dayIdx] += glass;
+        data.unglazedMosaicPacked[dayIdx] += unglazed;
+        data.glazedMosaicPacked[dayIdx] += glazed;
+        
+        // Loose Tiles Consumed based on Finished Product packed
+        // Summing the total finished products packed as the amount of loose tiles used to make them
+        data.looseTileConsumed[dayIdx] += (glass + unglazed + glazed);
       }
     });
 
@@ -128,6 +127,30 @@ export default function MonthlyProductionGrid() {
     { val: '09', label: 'September' }, { val: '10', label: 'October' },
     { val: '11', label: 'November' }, { val: '12', label: 'December' }
   ];
+
+  const renderDynamicRow = (label, unit, rowData) => {
+    const total = rowData.reduce((acc, val) => acc + (parseFloat(val) || 0), 0);
+    if (total === 0) return null; // Hide empty rows
+    
+    return (
+      <tr style={{ borderBottom: '1px solid #333', background: '#121212' }}>
+        <td className="grid-label-cell" style={{ position: 'sticky', left: 0, background: '#1a1a1c', borderRight: '2px solid #444', padding: '8px 12px', fontWeight: '600', color: '#fff', zIndex: 5, whiteSpace: 'nowrap' }}>
+          {label}
+        </td>
+        <td className="grid-unit-cell" style={{ padding: '8px 12px', textAlign: 'center', color: '#aaa', borderRight: '1px solid #333' }}>
+          {unit}
+        </td>
+        {daysArray.map((_, i) => (
+          <td className="grid-val-cell" key={i} style={{ padding: '8px 4px', textAlign: 'center', color: rowData[i] ? '#fff' : '#555', borderRight: '1px solid #333', fontWeight: rowData[i] ? '500' : 'normal' }}>
+            {rowData[i] ? parseFloat(rowData[i]).toFixed(2).replace(/\.00$/, '') : '-'}
+          </td>
+        ))}
+        <td className="grid-total-cell" style={{ background: '#27272a', borderLeft: '2px solid #444', padding: '8px 12px', textAlign: 'right', fontWeight: 'bold', color: '#10b981' }}>
+          {total > 0 ? total.toFixed(2).replace(/\.00$/, '') : '-'}
+        </td>
+      </tr>
+    );
+  };
 
   const renderRow = (label, unit, dataKey, isString = false) => {
     const rowData = matrixData[dataKey];
@@ -238,30 +261,39 @@ export default function MonthlyProductionGrid() {
           </thead>
           <tbody>
             
-            {renderSectionHeader('ITEM PROCESSED')}
-            {renderRow('Ball Mill', 'Chg No', 'ballMill', true)}
-            {renderRow('Glass Powder Mfg', '', 'glassPowderMfg')}
+            {/* ITEMS PROCESSED */}
+            {renderSectionHeader('A. ITEMS PROCESSED')}
+            {renderRow('Ball Mill (Charge No)', 'Nos', 'ballMill', true)}
+            {renderRow('Glass Powder Mfg', 'Kgs', 'glassPowderMfg')}
 
-            {renderSectionHeader('RAW MATERIAL CONSUMED')}
-            {renderRow('Balck Stain', '', 'blackStain')}
-            {renderRow('Glass Scrap', '', 'glassScrap')}
-            {renderRow('Glass Powder Consumed', '', 'glassPowderConsumed')}
+            {/* RAW MATERIAL CONSUMED (DYNAMIC) */}
+            {renderSectionHeader('B. RAW MATERIAL CONSUMED')}
+            {Object.keys(matrixData.rawMaterials).sort().map(rmName => 
+              renderDynamicRow(rmName, 'Kgs', matrixData.rawMaterials[rmName])
+            )}
+            {Object.keys(matrixData.rawMaterials).length === 0 && (
+              <tr><td colSpan={daysInMonth + 3} style={{ padding: '12px', textAlign: 'center', color: '#888' }}>No Raw Materials Logged</td></tr>
+            )}
 
-            {renderSectionHeader('CONSUMABLES CONSUMED')}
-            {renderRow('Boxes', '', 'boxes')}
-            {renderRow('PVA', '', 'pva')}
-            {renderRow('Cut Papper', '', 'cutPaper')}
+            {/* CONSUMABLES CONSUMED (DYNAMIC) */}
+            {renderSectionHeader('C. CONSUMABLES CONSUMED')}
+            {Object.keys(matrixData.consumables).sort().map(rmName => {
+               // Sheets made is shown in semi-finished section instead
+               if (rmName.toLowerCase().includes('sheets')) return null;
+               return renderDynamicRow(rmName, 'Kgs/Nos', matrixData.consumables[rmName]);
+            })}
+            {Object.keys(matrixData.consumables).length === 0 && (
+              <tr><td colSpan={daysInMonth + 3} style={{ padding: '12px', textAlign: 'center', color: '#888' }}>No Consumables Logged</td></tr>
+            )}
 
-            {renderSectionHeader('SEMI FINISH AND FINISHED ITEMS')}
-            {renderRow('Loose Tile Mfg', '', 'looseTileMfg')}
-            {renderRow('Sheets made', '', 'sheetsMade')}
-            {renderRow('Loose Tile Consumed', '', 'looseTileConsumed')}
-            
-            <tr><td colSpan={daysInMonth + 3} style={{ padding: '8px' }}></td></tr>
-
-            {renderRow('Glass Mosaic Packed', '', 'glassMosaicPacked')}
-            {renderRow('Unglazed Mosaic Packed', '', 'unglazedMosaicPacked')}
-            {renderRow('Glazed Mosaic Packed', '', 'glazedMosaicPacked')}
+            {/* SEMI FINISH AND FINISHED ITEMS */}
+            {renderSectionHeader('D. SEMI FINISH AND FINISHED ITEMS')}
+            {renderRow('Loose Tiles Mfg', 'Sqmtr', 'looseTileMfg')}
+            {renderRow('Loose Tile Consumed', 'Sqmtr', 'looseTileConsumed')}
+            {Object.keys(matrixData.consumables).find(k => k.toLowerCase().includes('sheets')) && renderDynamicRow('Sheets Made', 'Nos', matrixData.consumables[Object.keys(matrixData.consumables).find(k => k.toLowerCase().includes('sheets'))])}
+            {renderRow('Glass Mosaic Packed', 'Sqmtr', 'glassMosaicPacked')}
+            {renderRow('Unglazed Mosaic Packed', 'Sqmtr', 'unglazedMosaicPacked')}
+            {renderRow('Glazed Mosaic Packed', 'Sqmtr', 'glazedMosaicPacked')}
 
           </tbody>
         </table>
@@ -306,21 +338,22 @@ export default function MonthlyProductionGrid() {
           }
           
           /* Make table headers and cells explicitly black and white */
-          table th, table td {
+          table, table tr, table th, table td {
             color: black !important;
-            background-color: transparent !important;
-            border: 1px solid #444 !important;
+            background: white !important;
+            background-color: white !important;
+            border: 1px solid #aaa !important;
             padding: 2px !important;
             font-size: 11px !important;
             font-weight: bold !important;
           }
           
           table th {
-            background-color: #ddd !important;
+            background-color: #eee !important;
           }
 
           table td.grid-label-cell {
-            background-color: #f5f5f5 !important;
+            background-color: #f9f9f9 !important;
             font-weight: bold !important;
           }
 
