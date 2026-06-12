@@ -82,6 +82,10 @@ export default function MonthlyProductionGrid() {
         addToGroup(data.consumables, 'Paper Cuttings', log.consumables.cutPaper);
         addToGroup(data.consumables, 'PVA', log.consumables.pva);
         addToGroup(data.consumables, 'Sheets', log.consumables.sheetsMade);
+        addToGroup(data.consumables, 'Liquid Gum For Pasting', log.consumables.gum);
+        addToGroup(data.consumables, 'Kraft paper Roll', log.consumables.kraftPaper);
+        addToGroup(data.consumables, 'Stretch wrapping Roll', log.consumables.stretchFilm);
+        addToGroup(data.consumables, 'Plastic bags', log.consumables.plasticBags);
       }
       
       // PVA is also explicitly logged
@@ -181,7 +185,7 @@ export default function MonthlyProductionGrid() {
 
   const renderSectionHeader = (title) => (
     <tr className="grid-section-header">
-      <td colSpan={daysInMonth + 3} style={{ background: '#27272a', color: '#03a64b', fontWeight: 'bold', padding: '12px 12px', borderBottom: '1px solid #444', borderTop: '2px solid #444', fontSize: '1.05rem', letterSpacing: '0.5px' }}>
+      <td colSpan={daysInMonth + 3} className="print-group-header" style={{ background: '#27272a', color: '#03a64b', fontWeight: 'bold', padding: '12px 12px', borderBottom: '1px solid #444', borderTop: '2px solid #444', fontSize: '1.05rem', letterSpacing: '0.5px' }}>
         {title}
       </td>
     </tr>
@@ -240,6 +244,13 @@ export default function MonthlyProductionGrid() {
 
       {/* Grid Container */}
       <div className="card print-w-100" style={{ overflowX: 'auto', border: '1px solid var(--surface-high)', padding: '0', borderRadius: '12px' }}>
+        {/* Print ONLY Header */}
+        <div className="print-only-header" style={{ display: 'none', padding: '12px 16px' }}>
+          <h2 style={{ margin: 0, fontSize: '22px', textAlign: 'left', color: 'black', textTransform: 'uppercase' }}>Consumption / Production Summary</h2>
+          <div style={{ color: 'red', fontWeight: 'bold', fontSize: '14px', textAlign: 'left', marginTop: '6px' }}>
+            Date Range - 01/{selectedMonth}/{selectedYear} TO {daysInMonth}/{selectedMonth}/{selectedYear}
+          </div>
+        </div>
         <table style={{ minWidth: 'max-content', width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
           <thead>
             <tr className="grid-main-header">
@@ -254,7 +265,7 @@ export default function MonthlyProductionGrid() {
                   {day}
                 </th>
               ))}
-              <th style={{ background: '#1a1a1c', color: '#10b981', borderBottom: '2px solid #444', borderLeft: '2px solid #444', padding: '12px', textAlign: 'right', fontWeight: 'bold', minWidth: '80px' }}>
+              <th className="print-total-header" style={{ background: '#1a1a1c', color: '#10b981', borderBottom: '2px solid #444', borderLeft: '2px solid #444', padding: '12px', textAlign: 'right', fontWeight: 'bold', minWidth: '80px' }}>
                 TOTAL
               </th>
             </tr>
@@ -355,6 +366,30 @@ export default function MonthlyProductionGrid() {
           table td.grid-label-cell {
             background-color: #f9f9f9 !important;
             font-weight: bold !important;
+          }
+
+          /* Left-aligned print header */
+          .print-only-header {
+            display: block !important;
+            margin-bottom: 8px;
+            background: white !important;
+          }
+
+          /* Group header: BLUE */
+          table td.print-group-header {
+            color: #1d4ed8 !important; /* Blue text */
+            background-color: #eff6ff !important; /* Light blue background */
+          }
+
+          /* Totals: GREEN */
+          table th.print-total-header, table td.grid-total-cell {
+            color: #15803d !important; /* Green text */
+            background-color: #f0fdf4 !important; /* Light green background */
+          }
+
+          /* Fix Red text specifically */
+          .print-only-header div {
+            color: red !important;
           }
 
           /* For sticky headers, disable sticky in print so it flows naturally */
