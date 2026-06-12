@@ -919,7 +919,7 @@ export default function DailyProductionForm({ t }) {
           ))}
           {rawMaterials.filter(rm => rm.isConsumable).length === 0 && (
             <div style={{ fontSize: '0.85rem', color: 'var(--on-surface-variant)', gridColumn: '1 / -1' }}>
-              No consumables found in Master List. Go to Admin -> Master Data and tag materials as Consumable.
+              No consumables found in Master List. Go to Admin -&gt; Master Data and tag materials as Consumable.
             </div>
           )}
         </div>
