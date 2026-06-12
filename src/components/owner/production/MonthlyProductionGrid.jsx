@@ -137,20 +137,21 @@ export default function MonthlyProductionGrid() {
     }
     
     return (
-      <tr style={{ borderBottom: '1px solid var(--surface-high)', background: 'var(--surface)' }}>
-        <td className="grid-label-cell" style={{ position: 'sticky', left: 0, background: 'var(--surface)', borderRight: '2px solid var(--surface-high)', padding: '6px 12px', fontWeight: '500', color: 'var(--on-surface)', zIndex: 5, whiteSpace: 'nowrap' }}>
+    return (
+      <tr style={{ borderBottom: '1px solid #333', background: '#121212' }}>
+        <td className="grid-label-cell" style={{ position: 'sticky', left: 0, background: '#1a1a1c', borderRight: '2px solid #444', padding: '8px 12px', fontWeight: '600', color: '#fff', zIndex: 5, whiteSpace: 'nowrap' }}>
           {label}
         </td>
-        <td className="grid-unit-cell" style={{ padding: '6px 12px', textAlign: 'center', color: 'var(--on-surface-variant)', borderRight: '1px solid var(--surface-high)' }}>
+        <td className="grid-unit-cell" style={{ padding: '8px 12px', textAlign: 'center', color: '#aaa', borderRight: '1px solid #333' }}>
           {unit}
         </td>
         {daysArray.map((_, i) => (
-          <td className="grid-val-cell" key={i} style={{ padding: '6px 4px', textAlign: 'center', color: rowData[i] ? 'var(--on-surface)' : 'var(--on-surface-variant)', borderRight: '1px solid var(--surface-high)' }}>
-            {rowData[i] ? (isString ? rowData[i] : parseFloat(rowData[i]).toFixed(2).replace(/\.00$/, '')) : ''}
+          <td className="grid-val-cell" key={i} style={{ padding: '8px 4px', textAlign: 'center', color: rowData[i] ? '#fff' : '#555', borderRight: '1px solid #333', fontWeight: rowData[i] ? '500' : 'normal' }}>
+            {rowData[i] ? (isString ? rowData[i] : parseFloat(rowData[i]).toFixed(2).replace(/\.00$/, '')) : '-'}
           </td>
         ))}
-        <td className="grid-total-cell" style={{ background: 'var(--surface-high)', borderLeft: '2px solid var(--surface-high)', padding: '6px 12px', textAlign: 'right', fontWeight: 'bold', color: 'var(--on-surface)' }}>
-          {!isString && total > 0 ? total.toFixed(2).replace(/\.00$/, '') : ''}
+        <td className="grid-total-cell" style={{ background: '#27272a', borderLeft: '2px solid #444', padding: '8px 12px', textAlign: 'right', fontWeight: 'bold', color: '#10b981' }}>
+          {!isString && total > 0 ? total.toFixed(2).replace(/\.00$/, '') : '-'}
         </td>
       </tr>
     );
@@ -158,7 +159,7 @@ export default function MonthlyProductionGrid() {
 
   const renderSectionHeader = (title) => (
     <tr className="grid-section-header">
-      <td colSpan={daysInMonth + 3} style={{ background: 'var(--surface-high)', color: 'var(--primary)', fontWeight: 'bold', padding: '10px 12px', borderBottom: '1px solid var(--surface-high)', borderTop: '2px solid var(--surface-high)' }}>
+      <td colSpan={daysInMonth + 3} style={{ background: '#27272a', color: '#03a64b', fontWeight: 'bold', padding: '12px 12px', borderBottom: '1px solid #444', borderTop: '2px solid #444', fontSize: '1.05rem', letterSpacing: '0.5px' }}>
         {title}
       </td>
     </tr>
@@ -220,18 +221,18 @@ export default function MonthlyProductionGrid() {
         <table style={{ minWidth: 'max-content', width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
           <thead>
             <tr className="grid-main-header">
-              <th style={{ position: 'sticky', left: 0, background: 'var(--surface-high)', color: 'var(--on-surface)', borderRight: '2px solid var(--surface-high)', borderBottom: '2px solid var(--surface-high)', padding: '12px', zIndex: 10, textAlign: 'left', minWidth: '220px' }}>
+              <th style={{ position: 'sticky', left: 0, background: '#1a1a1c', color: '#fff', borderRight: '2px solid #444', borderBottom: '2px solid #444', padding: '12px', zIndex: 10, textAlign: 'left', minWidth: '220px' }}>
                 {/* Empty top left corner */}
               </th>
-              <th style={{ background: 'var(--surface-high)', color: 'var(--on-surface)', borderRight: '1px solid var(--surface-high)', borderBottom: '2px solid var(--surface-high)', padding: '12px', textAlign: 'center', fontWeight: 'bold' }}>
-                Units
+              <th style={{ background: '#1a1a1c', color: '#aaa', borderRight: '1px solid #444', borderBottom: '2px solid #444', padding: '12px', textAlign: 'center', fontWeight: 'bold', minWidth: '60px' }}>
+                Unit
               </th>
               {daysArray.map(day => (
-                <th key={day} style={{ background: 'var(--surface-high)', color: 'var(--on-surface)', borderBottom: '2px solid var(--surface-high)', borderRight: '1px solid var(--surface-high)', padding: '12px 6px', textAlign: 'center', minWidth: '35px', fontWeight: 'bold' }}>
+                <th key={day} style={{ background: '#1a1a1c', color: '#fff', borderBottom: '2px solid #444', borderRight: '1px solid #333', padding: '12px 2px', textAlign: 'center', minWidth: '32px', fontWeight: 'bold' }}>
                   {day}
                 </th>
               ))}
-              <th style={{ background: 'var(--surface-high)', color: 'var(--error)', borderBottom: '2px solid var(--surface-high)', borderLeft: '2px solid var(--surface-high)', padding: '12px', textAlign: 'right', fontWeight: 'bold' }}>
+              <th style={{ background: '#1a1a1c', color: '#10b981', borderBottom: '2px solid #444', borderLeft: '2px solid #444', padding: '12px', textAlign: 'right', fontWeight: 'bold', minWidth: '80px' }}>
                 TOTAL
               </th>
             </tr>
@@ -273,8 +274,10 @@ export default function MonthlyProductionGrid() {
           html, body {
             background-color: white !important;
             color: black !important;
-            height: auto !important;
-            overflow: visible !important;
+            height: 100vh !important;
+            overflow: hidden !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           
           /* Hide EVERYTHING in the app by default */
@@ -287,7 +290,7 @@ export default function MonthlyProductionGrid() {
             visibility: visible;
           }
 
-          /* Make the grid wrapper position absolute at the top left of the page */
+          /* Scale the table to fit on ONE PAGE */
           .print-w-100 {
             position: absolute !important;
             left: 0 !important;
@@ -299,19 +302,27 @@ export default function MonthlyProductionGrid() {
             box-shadow: none !important;
             background: white !important;
             overflow: visible !important;
+            transform: scale(0.68) !important;
+            transform-origin: top left !important;
           }
           
           /* Make table headers and cells explicitly black and white */
           table th, table td {
             color: black !important;
             background-color: transparent !important;
-            border: 1px solid #000 !important;
-            padding: 4px !important;
-            font-size: 10px !important;
+            border: 1px solid #444 !important;
+            padding: 2px !important;
+            font-size: 11px !important;
+            font-weight: bold !important;
           }
           
           table th {
-            background-color: #f0f0f0 !important;
+            background-color: #ddd !important;
+          }
+
+          table td.grid-label-cell {
+            background-color: #f5f5f5 !important;
+            font-weight: bold !important;
           }
 
           /* For sticky headers, disable sticky in print so it flows naturally */
@@ -319,7 +330,7 @@ export default function MonthlyProductionGrid() {
             position: static !important;
           }
 
-          @page { size: A4 landscape; margin: 0.5cm; }
+          @page { size: landscape; margin: 5mm; }
         }
       `}} />
     </div>

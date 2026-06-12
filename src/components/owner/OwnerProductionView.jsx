@@ -12,98 +12,89 @@ export default function OwnerProductionView({ t }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%' }}>
-      {/* Tab Navigation */}
+      {/* Premium Tab Navigation */}
       <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
+        display: 'flex', 
         gap: '6px', 
         background: 'var(--surface-high)', 
         padding: '6px', 
-        borderRadius: '16px'
+        borderRadius: '16px',
+        overflowX: 'auto',
+        scrollbarWidth: 'none', /* Firefox */
+        WebkitOverflowScrolling: 'touch',
+        border: '1px solid #333'
       }}>
+        <style dangerouslySetInnerHTML={{__html: `
+          .prod-tab-btn {
+            flex: 1 0 auto;
+            padding: 10px 16px;
+            border-radius: 12px;
+            border: none;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+          }
+          .prod-tab-btn.active {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+          }
+          .prod-tab-btn.inactive {
+            background: transparent;
+            color: var(--on-surface-variant);
+          }
+          .prod-tab-btn.inactive:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+          }
+        `}} />
         <button
           onClick={() => setActiveTab('daily')}
-          style={{
-            padding: '8px 10px', borderRadius: '12px', border: 'none', fontWeight: 'bold',
-            background: activeTab === 'daily' ? 'linear-gradient(135deg, #4f46e5, #6366f1)' : 'transparent',
-            color: activeTab === 'daily' ? 'white' : 'var(--on-surface-variant)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer',
-            fontSize: '0.85rem'
-          }}
+          className={`prod-tab-btn ${activeTab === 'daily' ? 'active' : 'inactive'}`}
         >
           <Plus size={16} /> Entry
         </button>
         <button
           onClick={() => setActiveTab('reviews')}
-          style={{
-            padding: '8px 10px', borderRadius: '12px', border: 'none', fontWeight: 'bold',
-            background: activeTab === 'reviews' ? 'linear-gradient(135deg, #4f46e5, #6366f1)' : 'transparent',
-            color: activeTab === 'reviews' ? 'white' : 'var(--on-surface-variant)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer',
-            fontSize: '0.85rem'
-          }}
+          className={`prod-tab-btn ${activeTab === 'reviews' ? 'active' : 'inactive'}`}
         >
           <ClipboardList size={16} /> Reviews
         </button>
         <button
           onClick={() => setActiveTab('reports')}
-          style={{
-            padding: '8px 10px', borderRadius: '12px', border: 'none', fontWeight: 'bold',
-            background: activeTab === 'reports' ? 'linear-gradient(135deg, #4f46e5, #6366f1)' : 'transparent',
-            color: activeTab === 'reports' ? 'white' : 'var(--on-surface-variant)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer',
-            fontSize: '0.85rem'
-          }}
+          className={`prod-tab-btn ${activeTab === 'reports' ? 'active' : 'inactive'}`}
         >
           <FileText size={16} /> History
         </button>
         <button
           onClick={() => setActiveTab('summaryReport')}
-          style={{
-            padding: '8px 10px', borderRadius: '12px', border: 'none', fontWeight: 'bold',
-            background: activeTab === 'summaryReport' ? 'linear-gradient(135deg, #4f46e5, #6366f1)' : 'transparent',
-            color: activeTab === 'summaryReport' ? 'white' : 'var(--on-surface-variant)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer',
-            fontSize: '0.85rem'
-          }}
+          className={`prod-tab-btn ${activeTab === 'summaryReport' ? 'active' : 'inactive'}`}
         >
           <Printer size={16} /> Summary
         </button>
         <button
           onClick={() => setActiveTab('stockSummary')}
-          style={{
-            padding: '8px 10px', borderRadius: '12px', border: 'none', fontWeight: 'bold',
-            background: activeTab === 'stockSummary' ? 'linear-gradient(135deg, #4f46e5, #6366f1)' : 'transparent',
-            color: activeTab === 'stockSummary' ? 'white' : 'var(--on-surface-variant)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer',
-            fontSize: '0.85rem'
-          }}
+          className={`prod-tab-btn ${activeTab === 'stockSummary' ? 'active' : 'inactive'}`}
         >
           <FileSpreadsheet size={16} /> Stock
         </button>
         <button
           onClick={() => setActiveTab('monthlyGrid')}
-          style={{
-            padding: '8px 10px', borderRadius: '12px', border: 'none', fontWeight: 'bold',
-            background: activeTab === 'monthlyGrid' ? 'linear-gradient(135deg, #4f46e5, #6366f1)' : 'transparent',
-            color: activeTab === 'monthlyGrid' ? 'white' : 'var(--on-surface-variant)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer',
-            fontSize: '0.85rem'
-          }}
+          className={`prod-tab-btn ${activeTab === 'monthlyGrid' ? 'active' : 'inactive'}`}
         >
           <Database size={16} /> Grid
         </button>
         <button
           onClick={() => setActiveTab('master')}
-          style={{
-            padding: '8px 10px', borderRadius: '12px', border: 'none', fontWeight: 'bold',
-            background: activeTab === 'master' ? 'linear-gradient(135deg, #4f46e5, #6366f1)' : 'transparent',
-            color: activeTab === 'master' ? 'white' : 'var(--on-surface-variant)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer',
-            fontSize: '0.85rem'
-          }}
+          className={`prod-tab-btn ${activeTab === 'master' ? 'active' : 'inactive'}`}
         >
-          <Database size={16} /> Master
+          <Package size={16} /> Master
         </button>
       </div>
 
