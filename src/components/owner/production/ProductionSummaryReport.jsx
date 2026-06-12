@@ -112,6 +112,8 @@ export default function ProductionSummaryReport({ t }) {
 
     // 3. Raw Materials Consumed
     const rmMap = {};
+    let totalSheetsMade = 0;
+    
     filteredLogs.forEach(p => {
       (p.calculatedRawMaterials || []).forEach(rm => {
         if (!rm.rawMaterialId || !rm.total) return;
@@ -174,8 +176,6 @@ export default function ProductionSummaryReport({ t }) {
 
     const aggregatedConsumables = { pva: 0, boxes: 0, cutPaper: 0, gum: 0, kraftPaper: 0, stretchFilm: 0, plasticBags: 0 };
 
-    const looseTilesConsumedSqmtr = (totalSheetsMade / 10.76) * 1.02;
-
     // 4. Items Manufactured
     const mfgMap = {};
     filteredLogs.forEach(p => {
@@ -220,6 +220,8 @@ export default function ProductionSummaryReport({ t }) {
         aggregatedFinishedMaterials.glassMosaicSqmtr += parseFloat(p.finishedMaterials.glassMosaicSqmtr) || 0;
       }
     });
+
+    const looseTilesConsumedSqmtr = aggregatedFinishedMaterials.unglazedSqmtr + aggregatedFinishedMaterials.glazedSqmtr + aggregatedFinishedMaterials.glassMosaicSqmtr;
 
     return {
       ballMillCharges,
@@ -442,13 +444,9 @@ export default function ProductionSummaryReport({ t }) {
               <div style={{ fontWeight: 'bold', borderBottom: '1px solid #cbd5e1', paddingBottom: '2px', marginBottom: '4px', color: '#1e1b4b', display: 'flex', justifyContent: 'space-between' }}>
                 <span>Loose Tiles Consumed</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                <span>Total Sheets Manufactured:</span>
-                <strong>{reportData.totalSheetsMade.toFixed(0)} Sheets</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px', borderTop: '1px solid #cbd5e1', paddingTop: '2px', fontWeight: 'bold', color: '#4f46e5' }}>
-                <span>Consumed (Sheets / 10.76 + 2% Rejection):</span>
-                <span style={{ fontSize: '12px' }}>{reportData.looseTilesConsumedSqmtr.toFixed(2)} SQMTR</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Total Consumed based on Finished Product:</span>
+                <span style={{ fontSize: '12px', fontWeight: 'bold' }}>{reportData.looseTilesConsumedSqmtr.toFixed(2)} SQMTR</span>
               </div>
             </div>
           </div>
@@ -750,12 +748,8 @@ export default function ProductionSummaryReport({ t }) {
               <strong style={{ display: 'block', fontSize: '0.95rem', color: 'var(--on-surface)', marginBottom: '8px', borderBottom: '1px solid rgba(99, 102, 241, 0.15)', paddingBottom: '6px' }}>
                 Loose Tiles Consumed
               </strong>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
-                <span style={{ color: 'var(--on-surface-variant)' }}>Total Sheets Manufactured:</span>
-                <strong style={{ color: 'var(--on-surface)' }}>{reportData.totalSheetsMade.toFixed(0)} Sheets</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem', fontWeight: 'bold', paddingTop: '6px', borderTop: '1px dashed rgba(99, 102, 241, 0.15)' }}>
-                <span style={{ color: 'var(--on-surface)' }}>Loose Tiles Consumed in SQMTR:</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem', fontWeight: 'bold', paddingTop: '6px' }}>
+                <span style={{ color: 'var(--on-surface)' }}>Based on Finished Material Packed:</span>
                 <span style={{ color: '#818cf8', fontSize: '1.1rem' }}>{reportData.looseTilesConsumedSqmtr.toFixed(2)} SQMTR</span>
               </div>
             </div>
