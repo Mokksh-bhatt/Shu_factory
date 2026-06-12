@@ -137,7 +137,6 @@ export default function MonthlyProductionGrid() {
     }
     
     return (
-    return (
       <tr style={{ borderBottom: '1px solid var(--surface-high)', background: 'var(--surface)' }}>
         <td className="grid-label-cell" style={{ position: 'sticky', left: 0, background: 'var(--surface)', borderRight: '2px solid var(--surface-high)', padding: '6px 12px', fontWeight: '500', color: 'var(--on-surface)', zIndex: 5, whiteSpace: 'nowrap' }}>
           {label}
