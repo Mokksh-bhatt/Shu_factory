@@ -36,6 +36,8 @@ export default function DailyProductionForm({ t }) {
   const [isLooseTilesOverridden, setIsLooseTilesOverridden] = useState(false);
 
   const [loggedConsumables, setLoggedConsumables] = useState({});
+  const [sheetsMade, setSheetsMade] = useState('');
+  const [hasAutoFilledConsumables, setHasAutoFilledConsumables] = useState(false);
 
   const [finishedMaterials, setFinishedMaterials] = useState({
     unglazedSqmtr: '',
@@ -58,6 +60,29 @@ export default function DailyProductionForm({ t }) {
     });
     return unsub;
   }, []);
+
+  // Pre-fill Consumables & Packaging from the most recent global entry when form loads
+  useEffect(() => {
+    if (allProductions.length > 0 && !hasAutoFilledConsumables) {
+      const latestLog = allProductions[0];
+      if (latestLog.loggedConsumables) {
+        const lcMap = {};
+        latestLog.loggedConsumables.forEach(lc => {
+          if (lc.name === 'Sheets' || lc.rawMaterialId === 'legacy_sheets') {
+            setSheetsMade(lc.total?.toString() || '');
+          } else {
+            lcMap[lc.rawMaterialId] = lc.total?.toString() || '';
+          }
+        });
+        setLoggedConsumables(lcMap);
+      } else if (latestLog.consumables) {
+        if (latestLog.consumables.sheetsMade) {
+          setSheetsMade(latestLog.consumables.sheetsMade.toString());
+        }
+      }
+      setHasAutoFilledConsumables(true);
+    }
+  }, [allProductions, hasAutoFilledConsumables]);
 
   // Fetch recent log history to extract smart suggestions
   useEffect(() => {
@@ -149,11 +174,20 @@ export default function DailyProductionForm({ t }) {
         if (match.loggedConsumables) {
           const lcMap = {};
           match.loggedConsumables.forEach(lc => {
-            lcMap[lc.rawMaterialId] = lc.total?.toString() || '';
+            if (lc.name === 'Sheets' || lc.rawMaterialId === 'legacy_sheets') {
+              setSheetsMade(lc.total?.toString() || '');
+            } else {
+              lcMap[lc.rawMaterialId] = lc.total?.toString() || '';
+            }
           });
           setLoggedConsumables(lcMap);
         } else {
           setLoggedConsumables({});
+          if (match.consumables && match.consumables.sheetsMade) {
+            setSheetsMade(match.consumables.sheetsMade.toString());
+          } else {
+            setSheetsMade('');
+          }
         }
         if (match.calculatedRawMaterials) {
           const actuals = {};
@@ -377,12 +411,15 @@ export default function DailyProductionForm({ t }) {
       }),
       calculatedRawMaterials: finalRawMaterialsList,
       looseTilesMfgSqmtr: parseFloat(looseTilesMfgSqmtr) || 0,
-      loggedConsumables: Object.entries(loggedConsumables)
-        .filter(([id, val]) => parseFloat(val) > 0)
-        .map(([id, val]) => {
-          const rm = rawMaterials.find(r => r.id === id);
-          return { rawMaterialId: id, name: rm?.name || 'Unknown', total: parseFloat(val) };
-        }),
+      loggedConsumables: [
+        ...Object.entries(loggedConsumables)
+          .filter(([id, val]) => parseFloat(val) > 0)
+          .map(([id, val]) => {
+            const rm = rawMaterials.find(r => r.id === id);
+            return { rawMaterialId: id, name: rm?.name || 'Unknown', total: parseFloat(val) };
+          }),
+        ...(parseFloat(sheetsMade) > 0 ? [{ rawMaterialId: 'legacy_sheets', name: 'Sheets', total: parseFloat(sheetsMade) }] : [])
+      ],
       finishedMaterials: {
         unglazedSqmtr: parseFloat(finishedMaterials.unglazedSqmtr) || 0,
         glazedSqmtr: parseFloat(finishedMaterials.glazedSqmtr) || 0,
@@ -407,7 +444,9 @@ export default function DailyProductionForm({ t }) {
       setLooseTilesMfgSqmtr('');
       setIsLooseTilesOverridden(false);
       setLoggedConsumables({});
+      setSheetsMade('');
       setFinishedMaterials({ unglazedSqmtr: '', glazedSqmtr: '', glassMosaicSqmtr: '' });
+      setHasAutoFilledConsumables(false); // Reset so it auto-fills again next time
       
       // Scroll to top of the form so user sees it has been completely reset
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -949,36 +988,57 @@ export default function DailyProductionForm({ t }) {
               }} 
               style={{ flex: 1 }}
             />
-            {isLooseTilesOverridden && (
-              <button 
-                type="button" 
-                onClick={() => {
-                  setIsLooseTilesOverridden(false);
-                  if (totalColourWeight > 0) {
-                    setLooseTilesMfgSqmtr((totalColourWeight / 10.76).toFixed(2));
-                  } else {
-                    setLooseTilesMfgSqmtr('');
-                  }
-                }}
-                style={{
-                  padding: '10px 14px',
-                  background: 'rgba(99, 102, 241, 0.1)',
-                  color: '#818cf8',
-                  border: 'none',
-                  borderRadius: '10px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem'
-                }}
-              >
-                Reset Default
-              </button>
-            )}
+            <span style={{ fontSize: '0.85rem', color: 'var(--on-surface-variant)', minWidth: '45px' }}>Sqmtr</span>
           </div>
-          <span style={{ display: 'block', marginTop: '6px', fontSize: '0.75rem', color: 'var(--on-surface-variant)' }}>
-            *Calculated as total of colour-wise weight / 10.76 (Default: {(totalColourWeight / 10.76).toFixed(2)} Sqmtr)
-          </span>
         </div>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>
+            Sheets Made (Nos)
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input 
+              type="number" 
+              step="1" 
+              placeholder="0" 
+              value={sheetsMade} 
+              onChange={e => setSheetsMade(e.target.value)} 
+              style={{ flex: 1 }}
+            />
+            <span style={{ fontSize: '0.85rem', color: 'var(--on-surface-variant)', minWidth: '45px' }}>Nos</span>
+          </div>
+        </div>
+
+        {isLooseTilesOverridden && (
+          <div style={{ marginTop: '12px' }}>
+            <button 
+              type="button" 
+              onClick={() => {
+                setIsLooseTilesOverridden(false);
+                if (totalColourWeight > 0) {
+                  setLooseTilesMfgSqmtr((totalColourWeight / 10.76).toFixed(2));
+                } else {
+                  setLooseTilesMfgSqmtr('');
+                }
+              }}
+              style={{
+                padding: '10px 14px',
+                background: 'rgba(99, 102, 241, 0.1)',
+                color: '#818cf8',
+                border: 'none',
+                borderRadius: '10px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                fontSize: '0.85rem'
+              }}
+            >
+              Reset Default
+            </button>
+          </div>
+        )}
+        <span style={{ display: 'block', marginTop: '6px', fontSize: '0.75rem', color: 'var(--on-surface-variant)' }}>
+          *Calculated as total of colour-wise weight / 10.76 (Default: {(totalColourWeight / 10.76).toFixed(2)} Sqmtr)
+        </span>
 
         {/* Finished Material */}
         <div style={{ marginTop: '12px', borderTop: '1px dashed var(--surface-high)', paddingTop: '16px' }}>
