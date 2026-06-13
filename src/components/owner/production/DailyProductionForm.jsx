@@ -992,23 +992,6 @@ export default function DailyProductionForm({ t }) {
           </div>
         </div>
 
-        <div>
-          <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>
-            Sheets Made (Nos)
-          </label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <input 
-              type="number" 
-              step="1" 
-              placeholder="0" 
-              value={sheetsMade} 
-              onChange={e => setSheetsMade(e.target.value)} 
-              style={{ flex: 1 }}
-            />
-            <span style={{ fontSize: '0.85rem', color: 'var(--on-surface-variant)', minWidth: '45px' }}>Nos</span>
-          </div>
-        </div>
-
         {isLooseTilesOverridden && (
           <div style={{ marginTop: '12px' }}>
             <button 
@@ -1039,6 +1022,23 @@ export default function DailyProductionForm({ t }) {
         <span style={{ display: 'block', marginTop: '6px', fontSize: '0.75rem', color: 'var(--on-surface-variant)' }}>
           *Calculated as total of colour-wise weight / 10.76 (Default: {(totalColourWeight / 10.76).toFixed(2)} Sqmtr)
         </span>
+
+        <div style={{ marginTop: '16px' }}>
+          <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>
+            Sheets Made (Nos)
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input 
+              type="number" 
+              step="1" 
+              placeholder="0" 
+              value={sheetsMade} 
+              onChange={e => setSheetsMade(e.target.value)} 
+              style={{ flex: 1 }}
+            />
+            <span style={{ fontSize: '0.85rem', color: 'var(--on-surface-variant)', minWidth: '45px' }}>Nos</span>
+          </div>
+        </div>
 
         {/* Finished Material */}
         <div style={{ marginTop: '12px', borderTop: '1px dashed var(--surface-high)', paddingTop: '16px' }}>
