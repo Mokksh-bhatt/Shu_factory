@@ -12,10 +12,8 @@ import ErrorBoundary from './components/ErrorBoundary';
 
 // Eagerly kick off the imports so they load during the splash screen,
 // but still split them out of the initial bundle for faster first parse.
-const ownerPromise = import('./components/OwnerDashboard');
-const workerPromise = import('./components/WorkerDashboard');
-const OwnerDashboard = lazy(() => ownerPromise);
-const WorkerDashboard = lazy(() => workerPromise);
+const dashboardPromise = import('./components/unified/MainDashboard');
+const MainDashboard = lazy(() => dashboardPromise);
 
 const RootLayout = () => {
   const { currentUser, notificationsEnabled, setNotificationsEnabled, t, authReady, updateAvailable } = useAppContext();
@@ -76,16 +74,12 @@ const RootLayout = () => {
             <Route path="/install" element={<InstallPage />} />
             <Route path="/" element={
               currentUser
-                ? <Navigate to={currentUser.role === 'owner' ? '/owner' : '/worker'} />
+                ? <Navigate to="/dashboard" />
                 : <Login />
             } />
             <Route
-              path="/owner"
-              element={currentUser?.role === 'owner' ? <OwnerDashboard /> : <Navigate to="/" />}
-            />
-            <Route
-              path="/worker"
-              element={currentUser?.role === 'worker' ? <WorkerDashboard /> : <Navigate to="/" />}
+              path="/dashboard"
+              element={currentUser ? <MainDashboard /> : <Navigate to="/" />}
             />
           </Routes>
         </Suspense>
