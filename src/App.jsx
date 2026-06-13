@@ -81,6 +81,7 @@ const RootLayout = () => {
               path="/dashboard"
               element={currentUser ? <MainDashboard /> : <Navigate to="/" />}
             />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
       </div>
