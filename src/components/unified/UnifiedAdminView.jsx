@@ -18,10 +18,8 @@ export default function UnifiedAdminView({ onBack, t, context }) {
         <h2 style={{ margin: 0, fontSize: '1.4rem', color: 'var(--primary)' }}>Admin</h2>
       </header>
 
-      <div style={{ flex: 1, background: 'var(--surface)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--on-surface-variant)' }}>
-        <Shield size={64} style={{ marginBottom: '16px', color: 'var(--surface-high)' }} />
-        <p>Admin Settings Area</p>
-        <p style={{ fontSize: '0.85rem' }}>User management and global settings will go here.</p>
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        <OwnerSettingsView {...context} t={t} />
       </div>
     </motion.div>
   );

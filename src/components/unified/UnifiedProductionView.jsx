@@ -21,7 +21,7 @@ export default function UnifiedProductionView({ onBack, t, context }) {
   const [printsTab, setPrintsTab] = useState('summary'); // 'entry_summary', 'summary', 'grid', 'stock'
 
   // Review Sub-tabs
-  const [reviewTab, setReviewTab] = useState('history'); // 'history', 'pending'
+  const [reviewTab, setReviewTab] = useState('pending'); // 'history', 'pending'
 
   return (
     <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }} style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px', minHeight: '100vh', background: 'var(--background)' }}>
@@ -113,19 +113,19 @@ export default function UnifiedProductionView({ onBack, t, context }) {
         {activeTab === 'review' && (
           <>
             <div style={{ display: 'flex', gap: '8px', padding: '12px', borderBottom: '1px solid var(--surface-high)' }}>
-              {['history', 'pending'].map(tab => (
+              {['pending', 'history'].map(tab => (
                 <button 
                   key={tab}
                   onClick={() => setReviewTab(tab)}
                   style={{ padding: '8px 16px', borderRadius: '20px', border: '1px solid', borderColor: reviewTab === tab ? 'var(--primary)' : 'transparent', background: reviewTab === tab ? 'rgba(16, 185, 129, 0.1)' : 'var(--surface-high)', color: reviewTab === tab ? 'var(--primary)' : 'var(--on-surface-variant)', fontSize: '0.85rem', fontWeight: 'bold', cursor: 'pointer' }}
                 >
-                  {tab === 'history' ? 'History (Approved)' : 'Pending Approvals'}
+                  {tab === 'pending' ? 'Pending Approvals' : 'History (Approved)'}
                 </button>
               ))}
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
-              {reviewTab === 'history' && <ProductionReports t={t} filterStatus="APPROVED" />}
               {reviewTab === 'pending' && <ProductionReports t={t} filterStatus="PENDING_APPROVAL" />}
+              {reviewTab === 'history' && <ProductionReports t={t} filterStatus="APPROVED" />}
             </div>
           </>
         )}
