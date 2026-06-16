@@ -68,17 +68,11 @@ export default function DailyProductionForm({ t }) {
       if (latestLog.loggedConsumables) {
         const lcMap = {};
         latestLog.loggedConsumables.forEach(lc => {
-          if (lc.name === 'Sheets' || lc.rawMaterialId === 'legacy_sheets') {
-            setSheetsMade(lc.total?.toString() || '');
-          } else {
+          if (lc.name !== 'Sheets' && lc.rawMaterialId !== 'legacy_sheets') {
             lcMap[lc.rawMaterialId] = lc.total?.toString() || '';
           }
         });
         setLoggedConsumables(lcMap);
-      } else if (latestLog.consumables) {
-        if (latestLog.consumables.sheetsMade) {
-          setSheetsMade(latestLog.consumables.sheetsMade.toString());
-        }
       }
       setHasAutoFilledConsumables(true);
     }
@@ -174,20 +168,13 @@ export default function DailyProductionForm({ t }) {
         if (match.loggedConsumables) {
           const lcMap = {};
           match.loggedConsumables.forEach(lc => {
-            if (lc.name === 'Sheets' || lc.rawMaterialId === 'legacy_sheets') {
-              setSheetsMade(lc.total?.toString() || '');
-            } else {
+            if (lc.name !== 'Sheets' && lc.rawMaterialId !== 'legacy_sheets') {
               lcMap[lc.rawMaterialId] = lc.total?.toString() || '';
             }
           });
           setLoggedConsumables(lcMap);
         } else {
           setLoggedConsumables({});
-          if (match.consumables && match.consumables.sheetsMade) {
-            setSheetsMade(match.consumables.sheetsMade.toString());
-          } else {
-            setSheetsMade('');
-          }
         }
         if (match.calculatedRawMaterials) {
           const actuals = {};
