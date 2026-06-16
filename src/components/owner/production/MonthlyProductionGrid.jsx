@@ -396,8 +396,11 @@ export default function MonthlyProductionGrid() {
           table th[style], table td[style] {
             position: static !important;
           }
-
-          @page { size: landscape; margin: 5mm; }
+        }
+        
+        @page { 
+          size: landscape; 
+          margin: 5mm; 
         }
       `}} />
     </div>
