@@ -422,34 +422,7 @@ export default function ProductionSummaryReport({ t }) {
               </div>
             </div>
 
-            <div style={{ marginTop: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '6px', fontSize: '11px' }}>
-              <div style={{ fontWeight: 'bold', borderBottom: '1px solid #cbd5e1', paddingBottom: '2px', marginBottom: '4px', color: '#1e1b4b', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Finished Material (SQMTR)</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                <span>Unglazed Mosaic Tiles:</span>
-                <strong>{reportData.finishedMaterials.unglazedSqmtr.toFixed(2)}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                <span>Glazed Mosaic Tiles:</span>
-                <strong>{reportData.finishedMaterials.glazedSqmtr.toFixed(2)}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Glass Mosaic Tiles:</span>
-                <strong>{reportData.finishedMaterials.glassMosaicSqmtr.toFixed(2)}</strong>
-              </div>
             </div>
-
-            <div style={{ marginTop: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '6px', fontSize: '11px' }}>
-              <div style={{ fontWeight: 'bold', borderBottom: '1px solid #cbd5e1', paddingBottom: '2px', marginBottom: '4px', color: '#1e1b4b', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Loose Tiles Consumed</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>Total Consumed based on Finished Product:</span>
-                <span style={{ fontSize: '12px', fontWeight: 'bold' }}>{reportData.looseTilesConsumedSqmtr.toFixed(2)} SQMTR</span>
-              </div>
-            </div>
-          </div>
 
           <div style={{ marginBottom: '15px' }}>
             <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#4f46e5', textTransform: 'uppercase', borderBottom: '1px solid #e2e8f0', paddingBottom: '4px', marginBottom: '8px', letterSpacing: '0.5px' }}>
@@ -486,6 +459,37 @@ export default function ProductionSummaryReport({ t }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: '#4f46e5' }}>
                 <span>Total Loose Tiles Manufactured (Sum of Above):</span>
                 <span>{reportData.totalLooseTilesMfg.toFixed(2)} SQMTR</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '15px' }}>
+            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#4f46e5', textTransform: 'uppercase', borderBottom: '1px solid #e2e8f0', paddingBottom: '4px', marginBottom: '8px', letterSpacing: '0.5px' }}>
+              4. Finished Material
+            </div>
+            
+            <div style={{ marginTop: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '6px', fontSize: '11px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                <span>Unglazed Mosaic Tiles:</span>
+                <strong>{reportData.finishedMaterials.unglazedSqmtr.toFixed(2)} SQMTR</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                <span>Glazed Mosaic Tiles:</span>
+                <strong>{reportData.finishedMaterials.glazedSqmtr.toFixed(2)} SQMTR</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span>Glass Mosaic Tiles:</span>
+                <strong>{reportData.finishedMaterials.glassMosaicSqmtr.toFixed(2)} SQMTR</strong>
+              </div>
+              
+              <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: '4px', marginBottom: '2px', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Sheets Made:</span>
+                <strong>{reportData.totalSheetsMade.toFixed(2)} Nos</strong>
+              </div>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid #cbd5e1' }}>
+                <span style={{ fontWeight: 'bold' }}>Loose Tiles Consumed <span style={{ fontWeight: 'normal', color: '#64748b' }}>(Sheets Made + 2% / 10.7639)</span>:</span>
+                <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#4f46e5' }}>{reportData.looseTilesConsumedSqmtr.toFixed(2)} SQMTR</span>
               </div>
             </div>
           </div>

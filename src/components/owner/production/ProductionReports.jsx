@@ -56,9 +56,20 @@ export default function ProductionReports({ t, filterStatus }) {
       calculatedRawMaterials: prod.calculatedRawMaterials
         ? prod.calculatedRawMaterials.map(rm => ({ ...rm, total: rm.total !== undefined ? rm.total.toString() : '0' }))
         : [],
-      loggedConsumables: prod.loggedConsumables
-        ? prod.loggedConsumables.map(lc => ({ ...lc, total: lc.total !== undefined ? lc.total.toString() : '0' }))
-        : [],
+      loggedConsumables: (() => {
+        const consumableMap = new Map();
+        if (prod.loggedConsumables) {
+          prod.loggedConsumables.forEach(lc => {
+            consumableMap.set(lc.rawMaterialId, { ...lc, total: lc.total !== undefined ? lc.total.toString() : '0' });
+          });
+        }
+        rawMaterials.filter(rm => rm.isConsumable).forEach(rm => {
+          if (!consumableMap.has(rm.id)) {
+            consumableMap.set(rm.id, { rawMaterialId: rm.id, name: rm.name, total: '0' });
+          }
+        });
+        return Array.from(consumableMap.values());
+      })(),
       looseTilesMfgSqmtr: prod.looseTilesMfgSqmtr !== undefined ? prod.looseTilesMfgSqmtr.toString() : '',
       finishedMaterials: prod.finishedMaterials ? {
         unglazedSqmtr: prod.finishedMaterials.unglazedSqmtr?.toString() || '',

@@ -61,22 +61,13 @@ export default function DailyProductionForm({ t }) {
     return unsub;
   }, []);
 
-  // Pre-fill Consumables & Packaging from the most recent global entry when form loads
+  // Pre-fill Consumables & Packaging to empty
   useEffect(() => {
-    if (allProductions.length > 0 && !hasAutoFilledConsumables) {
-      const latestLog = allProductions[0];
-      if (latestLog.loggedConsumables) {
-        const lcMap = {};
-        latestLog.loggedConsumables.forEach(lc => {
-          if (lc.name !== 'Sheets' && lc.rawMaterialId !== 'legacy_sheets') {
-            lcMap[lc.rawMaterialId] = lc.total?.toString() || '';
-          }
-        });
-        setLoggedConsumables(lcMap);
-      }
+    if (!hasAutoFilledConsumables) {
+      setLoggedConsumables({});
       setHasAutoFilledConsumables(true);
     }
-  }, [allProductions, hasAutoFilledConsumables]);
+  }, [hasAutoFilledConsumables]);
 
   // Fetch recent log history to extract smart suggestions
   useEffect(() => {

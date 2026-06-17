@@ -104,30 +104,32 @@ function MainDashboardContent(context) {
         width: '100%' 
       }}>
         
-        <button 
-          onClick={() => setView('admin')}
-          className="card"
-          style={{ 
-            display: 'flex', 
-            flexDirection: 'column', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            gap: '16px', 
-            padding: '40px 20px', 
-            border: 'none', 
-            background: 'linear-gradient(135deg, #1e293b, #0f172a)', 
-            color: 'white', 
-            borderRadius: '24px', 
-            cursor: 'pointer',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-            transition: 'transform 0.2s ease, box-shadow 0.2s ease'
-          }}
-          onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'}
-          onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
-        >
-          <Shield size={48} color="#60a5fa" />
-          <h2 style={{ margin: 0, fontSize: '1.8rem', letterSpacing: '2px' }}>ADMIN</h2>
-        </button>
+        {currentUser?.role === 'owner' && (
+          <button 
+            onClick={() => setView('admin')}
+            className="card"
+            style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              gap: '16px', 
+              padding: '40px 20px', 
+              border: 'none', 
+              background: 'linear-gradient(135deg, #3b82f6, #1e40af)', 
+              color: 'white', 
+              borderRadius: '24px', 
+              cursor: 'pointer',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
+              transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+          >
+            <Shield size={48} color="#60a5fa" />
+            <h2 style={{ margin: 0, fontSize: '1.8rem', letterSpacing: '2px' }}>ADMIN</h2>
+          </button>
+        )}
 
         <button 
           onClick={() => setView('tasks')}
@@ -154,30 +156,32 @@ function MainDashboardContent(context) {
           <h2 style={{ margin: 0, fontSize: '1.8rem', letterSpacing: '2px' }}>TASKS</h2>
         </button>
 
-        <button 
-          onClick={() => setView('production')}
-          className="card"
-          style={{ 
-            display: 'flex', 
-            flexDirection: 'column', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            gap: '16px', 
-            padding: '40px 20px', 
-            border: 'none', 
-            background: 'linear-gradient(135deg, #10b981, #047857)', 
-            color: 'white', 
-            borderRadius: '24px', 
-            cursor: 'pointer',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-            transition: 'transform 0.2s ease, box-shadow 0.2s ease'
-          }}
-          onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'}
-          onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
-        >
-          <Factory size={48} color="#a7f3d0" />
-          <h2 style={{ margin: 0, fontSize: '1.8rem', letterSpacing: '2px' }}>PRODUCTION</h2>
-        </button>
+        {currentUser?.role === 'owner' && (
+          <button 
+            onClick={() => setView('production')}
+            className="card"
+            style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              gap: '16px', 
+              padding: '40px 20px', 
+              border: 'none', 
+              background: 'linear-gradient(135deg, #10b981, #047857)', 
+              color: 'white', 
+              borderRadius: '24px', 
+              cursor: 'pointer',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
+              transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+          >
+            <Factory size={48} color="#a7f3d0" />
+            <h2 style={{ margin: 0, fontSize: '1.8rem', letterSpacing: '2px' }}>PRODUCTION</h2>
+          </button>
+        )}
 
       </div>
     </motion.div>
