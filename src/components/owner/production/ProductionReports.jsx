@@ -59,7 +59,12 @@ export default function ProductionReports({ t, filterStatus }) {
       loggedConsumables: prod.loggedConsumables
         ? prod.loggedConsumables.map(lc => ({ ...lc, total: lc.total !== undefined ? lc.total.toString() : '0' }))
         : [],
-      looseTilesMfgSqmtr: prod.looseTilesMfgSqmtr !== undefined ? prod.looseTilesMfgSqmtr.toString() : ''
+      looseTilesMfgSqmtr: prod.looseTilesMfgSqmtr !== undefined ? prod.looseTilesMfgSqmtr.toString() : '',
+      finishedMaterials: prod.finishedMaterials ? {
+        unglazedSqmtr: prod.finishedMaterials.unglazedSqmtr?.toString() || '',
+        glazedSqmtr: prod.finishedMaterials.glazedSqmtr?.toString() || '',
+        glassMosaicSqmtr: prod.finishedMaterials.glassMosaicSqmtr?.toString() || ''
+      } : { unglazedSqmtr: '', glazedSqmtr: '', glassMosaicSqmtr: '' }
     });
   };
 
@@ -251,7 +256,12 @@ export default function ProductionReports({ t, filterStatus }) {
         loggedConsumables: editForm.loggedConsumables.map(lc => ({
           ...lc,
           total: parseFloat(lc.total) || 0
-        }))
+        })),
+        finishedMaterials: {
+          unglazedSqmtr: parseFloat(editForm.finishedMaterials?.unglazedSqmtr) || 0,
+          glazedSqmtr: parseFloat(editForm.finishedMaterials?.glazedSqmtr) || 0,
+          glassMosaicSqmtr: parseFloat(editForm.finishedMaterials?.glassMosaicSqmtr) || 0
+        }
       };
 
       await updateDoc(doc(db, 'dailyProductions', id), updatedPayload);
@@ -890,6 +900,27 @@ export default function ProductionReports({ t, filterStatus }) {
                       </div>
                     ))}
                   </div>
+                  
+                  <div style={{ marginTop: '16px', borderTop: '1px solid var(--surface-high)', paddingTop: '12px' }}>
+                    <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--on-surface-variant)', fontWeight: 'bold', marginBottom: '8px' }}>
+                      Finished Materials Packed (Sqmtr)
+                    </span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--on-surface-variant)', marginBottom: '4px', fontWeight: '600' }}>Unglazed Mosaic</label>
+                        <input type="number" step="0.01" value={editForm.finishedMaterials?.unglazedSqmtr} onChange={e => setEditForm(prev => ({ ...prev, finishedMaterials: { ...prev.finishedMaterials, unglazedSqmtr: e.target.value } }))} style={{ width: '100%', padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--on-surface-variant)', marginBottom: '4px', fontWeight: '600' }}>Glazed Mosaic</label>
+                        <input type="number" step="0.01" value={editForm.finishedMaterials?.glazedSqmtr} onChange={e => setEditForm(prev => ({ ...prev, finishedMaterials: { ...prev.finishedMaterials, glazedSqmtr: e.target.value } }))} style={{ width: '100%', padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--on-surface-variant)', marginBottom: '4px', fontWeight: '600' }}>Glass Mosaic</label>
+                        <input type="number" step="0.01" value={editForm.finishedMaterials?.glassMosaicSqmtr} onChange={e => setEditForm(prev => ({ ...prev, finishedMaterials: { ...prev.finishedMaterials, glassMosaicSqmtr: e.target.value } }))} style={{ width: '100%', padding: '6px 8px', fontSize: '0.85rem' }} />
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
               </div>
             ) : (
@@ -1094,6 +1125,46 @@ export default function ProductionReports({ t, filterStatus }) {
                     </div>
                   </div>
                 ) : null}
+
+                {/* Finished Materials */}
+                {prod.finishedMaterials && Object.values(prod.finishedMaterials).some(v => parseFloat(v) > 0) && (
+                  <div style={{ padding: '12px 16px', borderTop: '1px solid var(--surface-high)' }}>
+                    <div style={{ 
+                      fontSize: '0.75rem', 
+                      fontWeight: '700', 
+                      color: 'var(--on-surface-variant)', 
+                      textTransform: 'uppercase', 
+                      letterSpacing: '0.5px', 
+                      marginBottom: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}>
+                      <div style={{ width: '4px', height: '12px', background: '#3b82f6', borderRadius: '2px' }}></div>
+                      Finished Materials Packed
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px' }}>
+                      {parseFloat(prod.finishedMaterials.unglazedSqmtr) > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--surface)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--surface-high)' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Unglazed Mosaic</span>
+                          <span style={{ fontSize: '0.95rem', color: 'var(--on-surface)', fontWeight: 'bold' }}>{prod.finishedMaterials.unglazedSqmtr} Sqmtr</span>
+                        </div>
+                      )}
+                      {parseFloat(prod.finishedMaterials.glazedSqmtr) > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--surface)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--surface-high)' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Glazed Mosaic</span>
+                          <span style={{ fontSize: '0.95rem', color: 'var(--on-surface)', fontWeight: 'bold' }}>{prod.finishedMaterials.glazedSqmtr} Sqmtr</span>
+                        </div>
+                      )}
+                      {parseFloat(prod.finishedMaterials.glassMosaicSqmtr) > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--surface)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--surface-high)' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)', fontWeight: '600' }}>Glass Mosaic</span>
+                          <span style={{ fontSize: '0.95rem', color: 'var(--on-surface)', fontWeight: 'bold' }}>{prod.finishedMaterials.glassMosaicSqmtr} Sqmtr</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
