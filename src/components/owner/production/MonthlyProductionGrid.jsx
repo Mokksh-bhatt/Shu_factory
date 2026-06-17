@@ -94,7 +94,14 @@ export default function MonthlyProductionGrid() {
       }
 
       // Sheets Made fallback logic
-      const sheetsFromConsumables = data.consumables['Sheets'] ? data.consumables['Sheets'][dayIdx] : 0;
+      let sheetsFromConsumables = 0;
+      if (Array.isArray(log.loggedConsumables)) {
+        const s = log.loggedConsumables.find(lc => lc.name === 'Sheets' || lc.rawMaterialId === 'legacy_sheets');
+        if (s) sheetsFromConsumables = parseFloat(s.total) || 0;
+      } else if (log.consumables && log.consumables.sheetsMade) {
+        sheetsFromConsumables = parseFloat(log.consumables.sheetsMade) || 0;
+      }
+      
       data.sheetsMade[dayIdx] += sheetsFromConsumables;
 
       // 4. SEMI FINISH AND FINISHED ITEMS
@@ -108,10 +115,11 @@ export default function MonthlyProductionGrid() {
         data.glassMosaicPacked[dayIdx] += glass;
         data.unglazedMosaicPacked[dayIdx] += unglazed;
         data.glazedMosaicPacked[dayIdx] += glazed;
-        
-        // Loose Tiles Consumed based on Finished Product packed
-        // Summing the total finished products packed as the amount of loose tiles used to make them
-        data.looseTileConsumed[dayIdx] += (glass + unglazed + glazed);
+      }
+
+      // Loose Tiles Consumed: (Sheets Made + 2%) / 10.7639
+      if (sheetsFromConsumables > 0) {
+        data.looseTileConsumed[dayIdx] += (sheetsFromConsumables * 1.02) / 10.7639;
       }
     });
 

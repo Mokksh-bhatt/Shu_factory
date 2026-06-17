@@ -269,12 +269,12 @@ export default function DailyProductionForm({ t }) {
 
   const calculatedRMs = calculateRawMaterialConsumption();
 
-  // Auto-calculate Loose Tiles Mfg Sqmtr (Total color wt / 10.76)
+  // Auto-calculate Loose Tiles Mfg Sqmtr (Total color wt / 10.7639)
   const totalColourWeight = coloursFired.reduce((sum, cf) => sum + (parseFloat(cf.totalWeight) || 0), 0);
   useEffect(() => {
     if (!isLooseTilesOverridden) {
       if (totalColourWeight > 0) {
-        setLooseTilesMfgSqmtr((totalColourWeight / 10.76).toFixed(2));
+        setLooseTilesMfgSqmtr((totalColourWeight / 10.7639).toFixed(2));
       } else {
         setLooseTilesMfgSqmtr('');
       }
@@ -1007,7 +1007,7 @@ export default function DailyProductionForm({ t }) {
           </div>
         )}
         <span style={{ display: 'block', marginTop: '6px', fontSize: '0.75rem', color: 'var(--on-surface-variant)' }}>
-          *Calculated as total of colour-wise weight / 10.76 (Default: {(totalColourWeight / 10.76).toFixed(2)} Sqmtr)
+          *Calculated as total glass powder consumed / 10.7639 (Default: {(totalColourWeight / 10.7639).toFixed(2)} Sqmtr)
         </span>
 
         <div style={{ marginTop: '16px' }}>

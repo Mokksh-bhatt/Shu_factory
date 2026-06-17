@@ -186,7 +186,7 @@ export default function ProductionReports({ t, filterStatus }) {
       return {
         ...prev,
         coloursFired: updated,
-        looseTilesMfgSqmtr: (totalWt / 10.76).toFixed(2)
+        looseTilesMfgSqmtr: (totalWt / 10.7639).toFixed(2)
       };
     });
   };
@@ -371,7 +371,7 @@ export default function ProductionReports({ t, filterStatus }) {
 
       // Loose Tiles value calculation fallback for old logs
       const totalColWeight = updatedColoursFired.reduce((sum, cf) => sum + (parseFloat(cf.totalWeight) || 0), 0);
-      const looseTilesVal = prod.looseTilesMfgSqmtr !== undefined ? prod.looseTilesMfgSqmtr : (totalColWeight / 10.76);
+      const looseTilesVal = prod.looseTilesMfgSqmtr !== undefined ? prod.looseTilesMfgSqmtr : (totalColWeight / 10.7639);
 
       // Update document in Firestore
       await updateDoc(doc(db, 'dailyProductions', id), {
@@ -502,7 +502,7 @@ export default function ProductionReports({ t, filterStatus }) {
       }
 
       const totalColWeight = updatedColoursFired.reduce((sum, cf) => sum + (parseFloat(cf.totalWeight) || 0), 0);
-      const looseTilesVal = prod.looseTilesMfgSqmtr !== undefined ? prod.looseTilesMfgSqmtr : (totalColWeight / 10.76);
+      const looseTilesVal = prod.looseTilesMfgSqmtr !== undefined ? prod.looseTilesMfgSqmtr : (totalColWeight / 10.7639);
 
       // Update in Firestore
       await updateDoc(doc(db, 'dailyProductions', prod.id), {

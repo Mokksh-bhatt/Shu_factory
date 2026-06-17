@@ -199,7 +199,7 @@ export default function ProductionSummaryReport({ t }) {
     });
 
     const aggregatedMfg = Object.values(mfgMap).map(m => {
-      m.sqmtr = m.totalWeight / 10.76;
+      m.sqmtr = m.totalWeight / 10.7639;
       return m;
     }).sort((a, b) =>
       a.colourName.localeCompare(b.colourName, undefined, { numeric: true, sensitivity: 'base' })
@@ -221,7 +221,7 @@ export default function ProductionSummaryReport({ t }) {
       }
     });
 
-    const looseTilesConsumedSqmtr = aggregatedFinishedMaterials.unglazedSqmtr + aggregatedFinishedMaterials.glazedSqmtr + aggregatedFinishedMaterials.glassMosaicSqmtr;
+    const looseTilesConsumedSqmtr = (totalSheetsMade * 1.02) / 10.7639;
 
     return {
       ballMillCharges,
